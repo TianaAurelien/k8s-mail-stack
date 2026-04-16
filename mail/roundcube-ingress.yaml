@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: roundcube-ingress
+  namespace: mail-stack
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # ✅ Suppression de http01-edit-in-place pour éviter les conflits avec Apache
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - mail.k8s.malagasy.com
+    secretName: mail-tls-prod-secret
+  rules:
+  - host: mail.k8s.malagasy.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: roundcube-service
+            port:
+              number: 80

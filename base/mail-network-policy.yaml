@@ -1,0 +1,63 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mail-network-policy
+  namespace: mail-stack
+spec:
+  podSelector: {} # S'applique à tous les pods du namespace mail-stack
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # =========================================================
+  # FLUX ENTRANTS (INGRESS)
+  # =========================================================
+  ingress:
+  # 1. Autoriser TOUTE communication entre les pods du même namespace
+  - from:
+    - podSelector: {}
+
+  # 2. Accès public aux services Mail et Web
+  - from:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - { protocol: TCP, port: 25 }    # SMTP
+    - { protocol: TCP, port: 587 }   # Submission
+    - { protocol: TCP, port: 465 }   # SMTPS
+    - { protocol: TCP, port: 143 }   # IMAP
+    - { protocol: TCP, port: 993 }   # IMAPS
+    - { protocol: TCP, port: 110 }   # POP3
+    - { protocol: TCP, port: 995 }   # POP3S
+    - { protocol: TCP, port: 80 }    # HTTP (Roundcube)
+    - { protocol: TCP, port: 443 }   # HTTPS (Roundcube)
+    - { protocol: TCP, port: 11334 } # Rspamd Web UI
+
+  # =========================================================
+  # FLUX SORTANTS (EGRESS)
+  # =========================================================
+  egress:
+  # 1. DNS : Autoriser l'accès au DNS (Cluster & Externe)
+  # On autorise le port 53 sans restriction d'IP pour éviter les conflits avec le SDN
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - { protocol: UDP, port: 53 }
+    - { protocol: TCP, port: 53 }
+
+  # 2. Communication interne : Autoriser la sortie vers les autres pods du namespace
+  - to:
+    - podSelector: {}
+
+  # 3. Accès Internet : Mises à jour, DNSBL et envoi SMTP
+  # Suppression des blocs "except" car ils bloquaient les communications ClusterIP
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - { protocol: TCP, port: 80 }    # HTTP
+    - { protocol: TCP, port: 443 }   # HTTPS
+    - { protocol: TCP, port: 25 }    # SMTP sortant (Relais/Direct)
+    - { protocol: TCP, port: 587 }   # Submission
+    - { protocol: TCP, port: 465 }   # SMTPS

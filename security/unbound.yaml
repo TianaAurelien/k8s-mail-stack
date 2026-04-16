@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unbound
+  namespace: mail-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: unbound
+  template:
+    metadata:
+      labels:
+        app: unbound
+    spec:
+      # --- AJOUT DU CONTEXTE DE SÉCURITÉ ---
+      securityContext:
+        runAsUser: 0  # On lance en root pour qu'il puisse binder le port 53 et lire le CM
+      # -------------------------------------
+      containers:
+      - name: unbound
+        image: mvance/unbound:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 53
+          protocol: UDP
+        - containerPort: 53
+          protocol: TCP
+        volumeMounts:
+        - name: unbound-conf
+          mountPath: /opt/unbound/etc/unbound/unbound.conf
+          subPath: unbound.conf
+        readinessProbe:
+          tcpSocket:
+            port: 53
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 53
+          initialDelaySeconds: 10
+          periodSeconds: 20
+      volumes:
+      - name: unbound-conf
+        configMap:
+          name: unbound-config

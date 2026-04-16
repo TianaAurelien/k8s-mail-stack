@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rspamd-config
+  namespace: mail-stack
+data:
+  # =========================
+  # DKIM SIGNING
+  # =========================
+  dkim_signing.conf: |
+    path = "/etc/rspamd/dkim/mail.key";
+    selector = "mail";
+    domain = "k8s.malagasy.com";
+    allow_username_mismatch = true;
+    use_domain = "header";
+    sign_networks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
+    symbol = "DKIM_SIGNED";
+
+  # =========================
+  # ACTIONS (THRESHOLDS)
+  # =========================
+  actions.conf: |
+    reject = 15;
+    add_header = 6;
+    greylist = 4;
+
+  # =========================
+  # OPTIONS (DNS CONFIG)
+  # =========================
+  options.inc: |
+    dns {
+      nameserver = ["unbound-service.mail-stack.svc.cluster.local"];
+      timeout = 2.0;
+      retransmits = 2;
+      enable_dnssec = false;
+    }
+
+  # =========================
+  # SPAMHAUS DQS (CORRECTED)
+  # =========================
+  rbl.conf: |
+    rbls {
+      spamhaus {
+        symbol = "SPAMHAUS_ZEN";
+        rbl = "jvokj6dketpqzzj66ejqpc5kcm.zen.dq.spamhaus.net";
+        ipv4 = true;
+        ipv6 = true;
+        enabled = true;
+      }
+    }
+  rbl_group.conf: |
+    symbols {
+      "SPAMHAUS_BLOCKED" {
+        score = 0.0;
+        description = "Spamhaus blocked our query (handled by DQS)";
+      }
+      "URIBL_BLOCKED" {
+        score = 0.0;
+        description = "URIBL blocked our query (ignoring)";
+      }
+    }
+
+  # =========================
+  # REDIS CORE CONFIG
+  # =========================
+  redis.conf: |
+    servers = "redis-service.mail-stack.svc.cluster.local:6379";
+    timeout = 5s;
+
+  # =========================
+  # BAYES + HISTORY + FUZZY
+  # =========================
+  classifier-bayes.conf: |
+    backend = "redis";
+    autolearn = true;
+
+  history_redis.conf: |
+    servers = "redis-service.mail-stack.svc.cluster.local:6379";
+
+  fuzzy_storage.conf: |
+    backend = "redis";
+
+  # =========================
+  # ANTIVIRUS
+  # =========================
+  antivirus.conf: |
+    clamav {
+      type = "clamav";
+      servers = "clamav-service.mail-stack.svc.cluster.local:3310";
+      symbol = "CLAM_VIRUS";
+      action = "reject";
+      scan_mime_parts = true;
+      timeout = 15.0;
+    }
+
+  # =========================
+  # MULTIMAP FILTERS
+  # =========================
+  multimap.conf: |
+    OFFENSIVE_SUBJECT {
+        type = "header";
+        header = "Subject";
+        map = "/etc/rspamd/local.d/offensive.map";
+        score = 5.0;
+    }
+    PHISHING_KEYWORDS {
+        type = "header";
+        header = "Subject";
+        map = "/etc/rspamd/local.d/phishing.map";
+        score = 4.0;
+    }
+
+  # =========================
+  # CUSTOM MAPS
+  # =========================
+  offensive.map: |
+    /merde/i
+    /putain/i
+    /connard/i
+    /salope/i
+    /enculé/i
+    /fuck/i
+    /shit/i
+    /bitch/i
+    /asshole/i
+
+  phishing.map: |
+    /mot de passe/i
+    /password/i
+    /vérifiez votre compte/i
+    /cliquez ici/i
+    /urgent/i
+    /bitcoin/i
+    /crypto/i

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: roundcube-config
+  namespace: mail-stack
+data:
+  ROUNDCUBEMAIL_DB_TYPE: "mysql"
+  ROUNDCUBEMAIL_DB_HOST: "mariadb-service.mail-stack.svc.cluster.local"
+  ROUNDCUBEMAIL_DB_NAME: "roundcube"
+  ROUNDCUBEMAIL_DB_USER: "roundcube"
+  
+  ROUNDCUBEMAIL_SESSION_STORAGE: "redis"
+  ROUNDCUBEMAIL_REDIS_HOST: "redis-service.mail-stack.svc.cluster.local"
+  
+  ROUNDCUBEMAIL_DEFAULT_HOST: "dovecot-service.mail-stack.svc.cluster.local"
+  ROUNDCUBEMAIL_DEFAULT_PORT: "143"
+  ROUNDCUBEMAIL_IMAP_CONN_OPTIONS: '{"ssl":{"verify_peer":false,"verify_peer_name":false,"allow_self_signed":true}}'
+  
+  ROUNDCUBEMAIL_SMTP_SERVER: "postfix-service.mail-stack.svc.cluster.local"
+  ROUNDCUBEMAIL_SMTP_PORT: "25"
+  ROUNDCUBEMAIL_SMTP_USER: "%u"
+  ROUNDCUBEMAIL_SMTP_PASS: "%p"
+  ROUNDCUBEMAIL_SMTP_AUTH_TYPE: "LOGIN"
+  ROUNDCUBEMAIL_SMTP_CONN_OPTIONS: '{"ssl":{"verify_peer":false,"verify_peer_name":false,"allow_self_signed":true}}'
+  
+  ROUNDCUBEMAIL_DES_KEY: "rrE84UaS2jgFE5QTQnXm7dPsbhGqt5C"
+  
+  ROUNDCUBEMAIL_LOG_DRIVER: "syslog"
+  ROUNDCUBEMAIL_SKIN: "elastic"

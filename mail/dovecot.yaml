@@ -1,0 +1,161 @@
+# PodDisruptionBudget : Haute disponibilité pour l'accès aux mails
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dovecot-pdb
+  namespace: mail-stack
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: dovecot
+---
+# Service LoadBalancer pour IMAP/POP3/SASL
+apiVersion: v1
+kind: Service
+metadata:
+  name: dovecot-service
+  namespace: mail-stack
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.6.222
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  ports:
+  - name: imap
+    port: 143
+    targetPort: 143
+  - name: imaps
+    port: 993
+    targetPort: 993
+  - name: pop3
+    port: 110
+    targetPort: 110
+  - name: pop3s
+    port: 995
+    targetPort: 995
+  - name: lmtp
+    port: 24
+    targetPort: 24
+  - name: sasl
+    port: 10000
+    targetPort: 10000
+  selector:
+    app: dovecot
+---
+# Deployment Dovecot HA avec injection dynamique de Secret
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dovecot
+  namespace: mail-stack
+  labels:
+    app: dovecot
+    version: ha
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: dovecot
+  template:
+    metadata:
+      labels:
+        app: dovecot
+        version: ha
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values: ["dovecot"]
+            topologyKey: kubernetes.io/hostname
+      
+      initContainers:
+      - name: init-dovecot-config
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Injection configuration..."
+            sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/dovecot-sql.conf.ext > /mnt/config-final/dovecot-sql.conf.ext
+            cp /tmp/config-tpl/dovecot.conf /mnt/config-final/dovecot.conf
+            # Sécurité : On s'assure que Dovecot peut lire le fichier
+            chmod 644 /mnt/config-final/dovecot-sql.conf.ext
+            echo "Configuration générée avec succès."
+        env:
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mail-secrets
+              key: MYSQL_PASSWORD
+        volumeMounts:
+        - name: dovecot-config-tpl
+          mountPath: /tmp/config-tpl
+        - name: dovecot-config-final
+          mountPath: /mnt/config-final
+
+      containers:
+      - name: dovecot
+        image: dovecot/dovecot:2.3.21
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        ports:
+        - name: imap
+          containerPort: 143
+        - name: imaps
+          containerPort: 993
+        - name: pop3
+          containerPort: 110
+        - name: pop3s
+          containerPort: 995
+        - name: lmtp
+          containerPort: 24
+        - name: sasl
+          containerPort: 10000
+        livenessProbe:
+          tcpSocket:
+            port: 143
+          initialDelaySeconds: 60
+        readinessProbe:
+          tcpSocket:
+            port: 143
+          initialDelaySeconds: 15
+        env:
+        - name: TZ
+          value: "Indian/Antananarivo"
+        volumeMounts:
+        - name: dovecot-config-final
+          mountPath: /etc/dovecot
+        - name: dovecot-tls
+          mountPath: /etc/dovecot/ssl
+          readOnly: true
+        - name: maildata
+          mountPath: /var/mail
+      
+      volumes:
+      - name: dovecot-config-tpl
+        configMap:
+          name: dovecot-config
+      - name: dovecot-config-final
+        emptyDir: {}
+      - name: dovecot-tls
+        secret:
+          secretName: mail-tls-prod-secret
+          optional: false
+      - name: maildata
+        persistentVolumeClaim:
+          claimName: maildata-pvc

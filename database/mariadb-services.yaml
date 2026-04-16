@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-galera
+  namespace: mail-stack
+spec:
+  clusterIP: None
+  ports:
+  - name: mysql
+    port: 3306
+  - name: galera-rep
+    port: 4567
+  - name: galera-ist
+    port: 4568
+  - name: galera-sst
+    port: 4444
+  selector:
+    app: mariadb-galera
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-service
+  namespace: mail-stack
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mariadb-galera

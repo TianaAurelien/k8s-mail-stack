@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
+    spec:
+      serviceAccountName: ingress-nginx
+
+      containers:
+      - name: controller
+        image: registry.k8s.io/ingress-nginx/controller:v1.14.3
+
+        args:
+          - /nginx-ingress-controller
+          - --controller-class=k8s.io/ingress-nginx
+          - --ingress-class=nginx
+          - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+
+          # WEBHOOK (OK conservé)
+          - --validating-webhook=:8443
+          - --validating-webhook-certificate=/usr/local/certificates/cert
+          - --validating-webhook-key=/usr/local/certificates/key
+
+        ports:
+          - containerPort: 80
+          - containerPort: 443
+          - containerPort: 8443
+
+        volumeMounts:
+          - name: webhook-cert
+            mountPath: /usr/local/certificates/
+            readOnly: true
+
+      volumes:
+        - name: webhook-cert
+          secret:
+            secretName: ingress-nginx-admission

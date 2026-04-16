@@ -1,0 +1,41 @@
+# 1. Stockage emails (Dovecot) - Accès partagé par les 3 pods
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maildata-pvc
+  namespace: mail-stack
+spec:
+  accessModes:
+    - ReadWriteMany  # Obligatoire pour 3 replicas Dovecot
+  storageClassName: longhorn-mail
+  resources:
+    requests:
+      storage: 100Gi
+---
+# 2. ClamAV (Antivirus) - Base de signatures partagée
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clamav-pvc
+  namespace: mail-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn-mail
+  resources:
+    requests:
+      storage: 5Gi
+---
+# 3. Rspamd (Anti-spam) - Apprentissage Bayes et stats
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rspamd-pvc
+  namespace: mail-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn-mail
+  resources:
+    requests:
+      storage: 2Gi

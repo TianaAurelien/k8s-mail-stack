@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postfix-config
+  namespace: mail-stack
+data:
+  main.cf: |
+    compatibility_level = 3.6
+    maillog_file = /dev/stdout
+
+    myhostname = mail.k8s.malagasy.com
+    mydomain = k8s.malagasy.com
+    myorigin = $mydomain
+
+    inet_interfaces = all
+    inet_protocols = ipv4
+
+    mydestination = localhost
+    local_recipient_maps =
+
+    mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.0.0/16
+
+    smtp_host_lookup = dns
+    smtp_dns_support_level = enabled
+    smtp_address_preference = ipv4
+
+    # MYSQL
+    virtual_mailbox_domains = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-domains.cf
+    virtual_mailbox_maps = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-maps.cf
+    virtual_alias_maps = proxy:mysql:/etc/postfix/mysql-virtual-alias-maps.cf
+
+    # LMTP → Dovecot
+    virtual_transport = lmtp:dovecot-service.mail-stack.svc.cluster.local:24
+
+    # AUTH
+    smtpd_sasl_type = dovecot
+    smtpd_sasl_path = inet:dovecot-service.mail-stack.svc.cluster.local:10000
+    smtpd_sasl_auth_enable = yes
+    smtpd_sasl_security_options = noanonymous
+    smtpd_sasl_authenticated_header = yes
+    broken_sasl_auth_clients = yes
+
+    # TLS
+    smtpd_tls_security_level = may
+    smtpd_tls_cert_file = /etc/postfix/ssl/tls.crt
+    smtpd_tls_key_file = /etc/postfix/ssl/tls.key
+
+    # RSPAMD
+    smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
+    non_smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
+    milter_protocol = 6
+    milter_default_action = accept
+
+    # RELAY
+    smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+    smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+
+    # POSTSCREEN
+    postscreen_dnsbl_sites = zen.spamhaus.org*3, bl.spamcop.net*2, b.barracudacentral.org*2
+    postscreen_dnsbl_action = enforce
+    postscreen_greet_action = enforce
+
+  master.cf: |
+    smtp      inet  n       -       y       -       -       smtpd
+    submission inet n       -       y       -       -       smtpd
+      -o smtpd_tls_security_level=encrypt
+      -o smtpd_sasl_auth_enable=yes
+      -o smtpd_sasl_type=dovecot
+      -o smtpd_sasl_path=inet:dovecot-service.mail-stack.svc.cluster.local:10000
+    smtps     inet  n       -       y       -       -       smtpd
+      -o smtpd_tls_wrappermode=yes
+      -o smtpd_sasl_auth_enable=yes
+
+    pickup    unix  n       -       y       60      1       pickup
+    cleanup   unix  n       -       y       -       0       cleanup
+    qmgr      unix  n       -       n       300     1       qmgr
+    tlsmgr    unix  -       -       y       1000    1       tlsmgr
+    rewrite   unix  -       -       y       -       -       trivial-rewrite
+    bounce    unix  -       -       y       -       0       bounce
+    defer     unix  -       -       y       -       0       bounce
+
+    proxymap  unix  -       -       n       -       -       proxymap
+    proxywrite unix -       -       n       -       1       proxymap
+
+    smtp      unix  -       -       y       -       -       smtp
+    relay     unix  -       -       y       -       -       smtp
+
+    showq     unix  n       -       y       -       -       showq
+    error     unix  -       -       y       -       -       error
+    retry     unix  -       -       y       -       -       error
+    discard   unix  -       -       y       -       -       discard
+
+    local     unix  -       n       n       -       -       local
+    virtual   unix  -       n       n       -       -       virtual
+    lmtp      unix  -       -       y       -       -       lmtp
+
+    anvil     unix  -       -       y       -       1       anvil
+    scache    unix  -       -       y       -       1       scache
+    postlog   unix-dgram n  -       y       -       1       postlogd
+
+  mysql-virtual-mailbox-domains.cf: |
+    user = mailuser
+    password = __DB_PASSWORD__
+    hosts = mariadb-service.mail-stack.svc.cluster.local
+    dbname = mailserver
+    query = SELECT 1 FROM virtual_domains WHERE name='%s'
+
+  mysql-virtual-mailbox-maps.cf: |
+    user = mailuser
+    password = __DB_PASSWORD__
+    hosts = mariadb-service.mail-stack.svc.cluster.local
+    dbname = mailserver
+    query = SELECT 1 FROM virtual_users WHERE email='%s' AND enabled=1
+
+  mysql-virtual-alias-maps.cf: |
+    user = mailuser
+    password = __DB_PASSWORD__
+    hosts = mariadb-service.mail-stack.svc.cluster.local
+    dbname = mailserver
+    query = SELECT destination FROM virtual_aliases WHERE source='%s'

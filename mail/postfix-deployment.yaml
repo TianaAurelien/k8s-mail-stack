@@ -1,0 +1,112 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postfix-pdb
+  namespace: mail-stack
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: postfix
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postfix-service
+  namespace: mail-stack
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.6.221
+  ports:
+    - {name: smtp, port: 25, targetPort: 25}
+    - {name: submission, port: 587, targetPort: 587}
+    - {name: smtps, port: 465, targetPort: 465}
+  selector:
+    app: postfix
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postfix
+  namespace: mail-stack
+spec:
+  serviceName: postfix-service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: postfix
+  template:
+    metadata:
+      labels:
+        app: postfix
+    spec:
+      initContainers:
+        - name: init-postfix-config
+          image: postfix-custom:v1
+          command:
+            - sh
+            - -c
+            - |
+              cp -a /etc/postfix/* /mnt/config-prep/
+
+              sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/mysql-virtual-mailbox-domains.cf > /mnt/config-prep/mysql-virtual-mailbox-domains.cf
+              sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/mysql-virtual-mailbox-maps.cf > /mnt/config-prep/mysql-virtual-mailbox-maps.cf
+              sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/mysql-virtual-alias-maps.cf > /mnt/config-prep/mysql-virtual-alias-maps.cf
+
+              cp /tmp/config-tpl/main.cf /mnt/config-prep/main.cf
+              cp /tmp/config-tpl/master.cf /mnt/config-prep/master.cf
+
+              # Permissions postfix
+              chown -R 100:101 /mnt/config-prep
+
+              # 🔥 FIX CRITIQUE MYSQL (NE JAMAIS OUBLIER)
+              chown root:root /mnt/config-prep/dynamicmaps.cf
+              chmod 644 /mnt/config-prep/dynamicmaps.cf
+
+          env:
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mail-secrets
+                  key: MYSQL_PASSWORD
+          volumeMounts:
+            - name: postfix-config-tpl
+              mountPath: /tmp/config-tpl
+            - name: postfix-config-final
+              mountPath: /mnt/config-prep
+
+      containers:
+        - name: postfix
+          image: postfix-custom:v1
+          env:
+            - name: TZ
+              value: "Indian/Antananarivo"
+          volumeMounts:
+            - name: postfix-config-final
+              mountPath: /etc/postfix
+            - name: postfix-tls
+              mountPath: /etc/postfix/ssl
+              readOnly: true
+            - name: postfix-queue
+              mountPath: /var/spool/postfix
+
+      volumes:
+        - name: postfix-config-tpl
+          configMap:
+            name: postfix-config
+        - name: postfix-config-final
+          emptyDir: {}
+        - name: postfix-tls
+          secret:
+            secretName: mail-tls-prod-secret
+            defaultMode: 0444
+
+  volumeClaimTemplates:
+    - metadata:
+        name: postfix-queue
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn-mail
+        resources:
+          requests:
+            storage: 2Gi

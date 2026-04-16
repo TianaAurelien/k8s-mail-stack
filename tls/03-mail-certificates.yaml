@@ -1,0 +1,25 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mail-stack-tls
+  namespace: mail-stack
+spec:
+  # On garde ce nom de secret
+  secretName: mail-tls-prod-secret  
+
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+
+  commonName: mail.k8s.malagasy.com
+
+  dnsNames:
+    - mail.k8s.malagasy.com
+    - imap.k8s.malagasy.com
+    - smtp.k8s.malagasy.com
+    
+  # ✅ Optionnel : demande une clé privée RSA 2048 (plus compatible avec Dovecot/Postfix)
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048

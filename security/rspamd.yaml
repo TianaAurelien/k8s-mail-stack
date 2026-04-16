@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rspamd
+  namespace: mail-stack
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rspamd
+  template:
+    metadata:
+      labels:
+        app: rspamd
+    spec:
+      dnsPolicy: ClusterFirst
+      securityContext:
+        fsGroup: 113
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: rspamd
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: rspamd
+        image: rspamd/rspamd:latest
+        ports:
+        - containerPort: 11332
+          name: milter
+        - containerPort: 11333
+          name: controller
+        - containerPort: 11334
+          name: webui
+        volumeMounts:
+        - name: rspamd-data
+          mountPath: /var/lib/rspamd
+        - name: dkim-secret
+          mountPath: /etc/rspamd/dkim
+          readOnly: true
+        # =========================================================
+        # Montages individuels pour préserver le dossier local.d
+        # =========================================================
+        - name: config
+          mountPath: /etc/rspamd/local.d/antivirus.conf
+          subPath: antivirus.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/redis.conf
+          subPath: redis.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/classifier-bayes.conf
+          subPath: classifier-bayes.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/history_redis.conf
+          subPath: history_redis.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/fuzzy_storage.conf
+          subPath: fuzzy_storage.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/options.inc
+          subPath: options.inc
+        - name: config
+          mountPath: /etc/rspamd/local.d/actions.conf
+          subPath: actions.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/dkim_signing.conf
+          subPath: dkim_signing.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/multimap.conf
+          subPath: multimap.conf
+        # --- AJOUTS POUR SPAMHAUS DQS ---
+        - name: config
+          mountPath: /etc/rspamd/local.d/rbl.conf
+          subPath: rbl.conf
+        - name: config
+          mountPath: /etc/rspamd/local.d/rbl_group.conf
+          subPath: rbl_group.conf
+        # --------------------------------
+        - name: config
+          mountPath: /etc/rspamd/local.d/offensive.map
+          subPath: offensive.map
+        - name: config
+          mountPath: /etc/rspamd/local.d/phishing.map
+          subPath: phishing.map
+      volumes:
+      - name: rspamd-data
+        persistentVolumeClaim:
+          claimName: rspamd-pvc
+      - name: config
+        configMap:
+          name: rspamd-config
+      - name: dkim-secret
+        secret:
+          secretName: rspamd-dkim-secret

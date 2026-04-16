@@ -1,0 +1,22 @@
+# database/mariadb-init-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-init-scripts
+  namespace: mail-stack
+data:
+  01-init-foundation.sql: |
+    -- Création des bases
+    CREATE DATABASE IF NOT EXISTS mailserver;
+    CREATE DATABASE IF NOT EXISTS roundcube;
+
+    -- Création des utilisateurs techniques (sans mot de passe ici, 
+    -- ils seront gérés/écrasés par le script de sync avec $TARGET_PASS)
+    CREATE USER IF NOT EXISTS 'dovecot'@'%';
+    CREATE USER IF NOT EXISTS 'mailuser'@'%';
+    CREATE USER IF NOT EXISTS 'roundcube'@'%';
+    
+    GRANT SELECT ON mailserver.* TO 'dovecot'@'%';
+    GRANT ALL PRIVILEGES ON mailserver.* TO 'mailuser'@'%';
+    GRANT ALL PRIVILEGES ON roundcube.* TO 'roundcube'@'%';
+    FLUSH PRIVILEGES;

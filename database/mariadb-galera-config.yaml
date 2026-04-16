@@ -1,0 +1,29 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-galera-config
+  namespace: mail-stack
+data:
+  galera.cnf: |
+    [galera]
+    wsrep_on = ON
+    wsrep_provider = /usr/lib/galera/libgalera_smm.so
+    wsrep_cluster_name = "mail_galera_cluster"
+    wsrep_cluster_address = "gcomm://mariadb-galera-0.mariadb-galera.mail-stack.svc.cluster.local"
+    wsrep_sst_method = rsync
+    binlog_format = ROW
+    default_storage_engine = InnoDB
+    innodb_autoinc_lock_mode = 2
+    innodb_flush_log_at_trx_commit = 0
+
+  my.cnf: |
+    [mysqld]
+    user = mysql
+    port = 3306
+    datadir = /var/lib/mysql
+    character-set-server = utf8mb4
+    collation-server = utf8mb4_unicode_ci
+    binlog_format = ROW
+    max_connections = 500
+    query_cache_type = 0

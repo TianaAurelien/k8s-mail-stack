@@ -1,0 +1,13 @@
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: guaranteed-instance-manager-cpu
+  namespace: longhorn-system
+value: "20"
+---
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: log-level
+  namespace: longhorn-system
+value: "Debug"

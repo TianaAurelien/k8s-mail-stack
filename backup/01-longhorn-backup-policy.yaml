@@ -1,0 +1,27 @@
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: mail-daily-backup
+  namespace: longhorn-system
+spec:
+  name: mail-daily-backup
+  groups:
+  - default
+  task: snapshot
+  cron: "0 1 * * *"
+  retain: 7
+  concurrency: 1
+---
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: mail-weekly-backup-remote
+  namespace: longhorn-system
+spec:
+  name: mail-weekly-backup-remote
+  groups:
+  - remote
+  task: backup
+  cron: "0 3 * * 0"
+  retain: 4
+  concurrency: 1

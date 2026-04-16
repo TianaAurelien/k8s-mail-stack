@@ -1,0 +1,144 @@
+---
+# MariaDB Galera Cluster 3 nodes - HA Production
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb-galera
+  namespace: mail-stack
+spec:
+  serviceName: mariadb-galera
+  replicas: 3
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: mariadb-galera
+  template:
+    metadata:
+      labels:
+        app: mariadb-galera
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - mariadb-galera
+            topologyKey: kubernetes.io/hostname
+      
+      initContainers:
+      - name: init-config
+        image: busybox
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -ex
+          cp /mnt/config-source/* /mnt/config/
+          chown -R 999:999 /mnt/data /mnt/config
+        volumeMounts:
+        - name: config
+          mountPath: /mnt/config
+        - name: config-source
+          mountPath: /mnt/config-source
+        - name: data
+          mountPath: /mnt/data
+      
+      containers:
+      - name: mariadb
+        image: mariadb:11.4
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -ex
+          DATADIR="/var/lib/mysql"
+          GRASTAT="$DATADIR/grastat.dat"
+
+          # Si c'est le tout premier démarrage (pod 0 avec dossier vide)
+          if [ ! -d "$DATADIR/mysql" ] && [ "$HOSTNAME" = "mariadb-galera-0" ]; then
+              echo "First run of pod 0, initializing cluster..."
+              exec docker-entrypoint.sh mariadbd --wsrep-new-cluster --wsrep_cluster_address="gcomm://"
+          fi
+
+          # Logique de Bootstrap pour le pod 0 (reprise après crash ou arrêt)
+          if [ "$HOSTNAME" = "mariadb-galera-0" ]; then
+              if [ -f "$GRASTAT" ]; then
+                  sed -i 's/safe_to_bootstrap: 0/safe_to_bootstrap: 1/' "$GRASTAT"
+              fi
+              echo "Starting node 0 as Potential Bootstrap Leader..."
+              exec docker-entrypoint.sh mariadbd --wsrep-new-cluster --wsrep_cluster_address="gcomm://"
+          else
+              echo "Starting node and joining cluster..."
+              # On attend plus longtemps pour l'init des fichiers système et SQL
+              sleep 45
+              exec docker-entrypoint.sh mariadbd --wsrep_cluster_address="gcomm://mariadb-galera-0.mariadb-galera.mail-stack.svc.cluster.local"
+          fi
+        ports:
+        - containerPort: 3306
+        - containerPort: 4567
+        - containerPort: 4568
+        - containerPort: 4444
+        env:
+        # ✅ RÉFÉRENCE AU SECRET AU LIEU DE "VALUE"
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mail-secrets
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_INITDB_SKIP_TZINFO
+          value: "1"
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "mariadb-admin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD}"]
+          initialDelaySeconds: 180
+          periodSeconds: 15
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "mariadb-admin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD}"
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+        - name: config
+          mountPath: /etc/mysql/conf.d
+        - name: init-db
+          mountPath: /docker-entrypoint-initdb.d
+      
+      volumes:
+      - name: config
+        emptyDir: {}
+      - name: config-source
+        configMap:
+          name: mariadb-galera-config
+      - name: init-db
+        configMap:
+          name: mariadb-init-scripts
+  
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: longhorn-mail
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mariadb-galera-pdb
+  namespace: mail-stack
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: mariadb-galera

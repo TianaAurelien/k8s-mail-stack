@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unbound-config
+  namespace: mail-stack
+data:
+  unbound.conf: |
+    server:
+      interface: 0.0.0.0
+      port: 53
+      do-ip4: yes
+      do-udp: yes
+      do-tcp: yes
+      
+      # Autorisations pour le cluster
+      access-control: 127.0.0.1/32 allow
+      access-control: 10.0.0.0/8 allow
+      access-control: 172.16.0.0/12 allow
+      access-control: 192.168.0.0/16 allow
+
+      # Sécurité et masquage
+      hide-identity: yes
+      hide-version: yes
+      
+      # Optimisations pour Rspamd
+      msg-cache-size: 32m
+      rrset-cache-size: 64m
+      num-threads: 2

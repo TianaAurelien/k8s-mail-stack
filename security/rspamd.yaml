@@ -41,9 +41,6 @@ spec:
         - name: dkim-secret
           mountPath: /etc/rspamd/dkim
           readOnly: true
-        # =========================================================
-        # Montages individuels pour préserver le dossier local.d
-        # =========================================================
         - name: config
           mountPath: /etc/rspamd/local.d/antivirus.conf
           subPath: antivirus.conf
@@ -71,14 +68,12 @@ spec:
         - name: config
           mountPath: /etc/rspamd/local.d/multimap.conf
           subPath: multimap.conf
-        # --- AJOUTS POUR SPAMHAUS DQS ---
         - name: config
           mountPath: /etc/rspamd/local.d/rbl.conf
           subPath: rbl.conf
         - name: config
           mountPath: /etc/rspamd/local.d/rbl_group.conf
           subPath: rbl_group.conf
-        # --------------------------------
         - name: config
           mountPath: /etc/rspamd/local.d/offensive.map
           subPath: offensive.map
@@ -95,3 +90,23 @@ spec:
       - name: dkim-secret
         secret:
           secretName: rspamd-dkim-secret
+---
+# SERVICE RSPAMD — manquait complètement
+apiVersion: v1
+kind: Service
+metadata:
+  name: rspamd-service
+  namespace: mail-stack
+spec:
+  selector:
+    app: rspamd
+  ports:
+  - name: milter
+    port: 11332
+    targetPort: 11332
+  - name: controller
+    port: 11333
+    targetPort: 11333
+  - name: webui
+    port: 11334
+    targetPort: 11334

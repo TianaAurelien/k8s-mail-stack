@@ -1,0 +1,8 @@
+# Téléchargement de la base principale (environ 160 Mo)
+curl -L -A "Mozilla/5.0" https://database.clamav.net/main.cvd -o security/clamav/main.cvd
+
+# Téléchargement de la base quotidienne (environ 100 Mo - 1 Go selon les jours)
+curl -L -A "Mozilla/5.0" https://database.clamav.net/daily.cvd -o security/clamav/daily.cvd
+
+# Téléchargement du bytecode
+curl -L -A "Mozilla/5.0" https://database.clamav.net/bytecode.cvd -o security/clamav/bytecode.cvd

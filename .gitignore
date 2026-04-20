@@ -1,16 +1,17 @@
-# Secrets et clés privées — JAMAIS dans Git
-base/mail-config.yaml
-mail.key
-security/dkim/mail.key
+# Secrets et mots de passe
 mysql_root.txt
+*.txt
+mail.key
 
-# Bases de données ClamAV — trop lourdes
-security/clamav/bytecode.cvd
-security/clamav/daily.cvd
-security/clamav/main.cvd
-security/clamav/clamav-download
+# Fichiers TLS/SSL
+tls/*.key
+tls/*.crt
+**/*.key
+**/*.pem
 
-# Fichiers temporaires
-*.swp
-*.bak
-*~
+# Bases de données ClamAV (trop lourdes pour Git)
+security/clamav/*.cvd
+
+# Divers
+.DS_Store
+*.log

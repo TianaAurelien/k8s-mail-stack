@@ -4,7 +4,7 @@ metadata:
   name: mail-network-policy
   namespace: mail-stack
 spec:
-  podSelector: {} # S'applique à tous les pods du namespace mail-stack
+  podSelector: {}
   policyTypes:
   - Ingress
   - Egress
@@ -13,51 +13,91 @@ spec:
   # FLUX ENTRANTS (INGRESS)
   # =========================================================
   ingress:
-  # 1. Autoriser TOUTE communication entre les pods du même namespace
+  # 1. Inter-communication totale entre pods du namespace
   - from:
     - podSelector: {}
 
-  # 2. Accès public aux services Mail et Web
+  # 2. Trafic public entrant vers les services exposés
   - from:
     - ipBlock:
         cidr: 0.0.0.0/0
     ports:
-    - { protocol: TCP, port: 25 }    # SMTP
-    - { protocol: TCP, port: 587 }   # Submission
-    - { protocol: TCP, port: 465 }   # SMTPS
-    - { protocol: TCP, port: 143 }   # IMAP
-    - { protocol: TCP, port: 993 }   # IMAPS
-    - { protocol: TCP, port: 110 }   # POP3
-    - { protocol: TCP, port: 995 }   # POP3S
-    - { protocol: TCP, port: 80 }    # HTTP (Roundcube)
-    - { protocol: TCP, port: 443 }   # HTTPS (Roundcube)
-    - { protocol: TCP, port: 11334 } # Rspamd Web UI
+    - { protocol: TCP, port: 25 }
+    - { protocol: TCP, port: 587 }
+    - { protocol: TCP, port: 465 }
+    - { protocol: TCP, port: 143 }
+    - { protocol: TCP, port: 993 }
+    - { protocol: TCP, port: 110 }
+    - { protocol: TCP, port: 995 }
+    - { protocol: TCP, port: 24 }
+    - { protocol: TCP, port: 80 }
+    - { protocol: TCP, port: 443 }
+    - { protocol: TCP, port: 11334 }
+    - { protocol: TCP, port: 10000 }
+
+  # 3. Prometheus / Metrics depuis kube-system
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
 
   # =========================================================
   # FLUX SORTANTS (EGRESS)
   # =========================================================
   egress:
-  # 1. DNS : Autoriser l'accès au DNS (Cluster & Externe)
-  # On autorise le port 53 sans restriction d'IP pour éviter les conflits avec le SDN
+  # 1. DNS EXPLICITE vers CoreDNS (10.96.0.10)
+  #    Règle séparée et prioritaire -- sans except
+  #    C'était le bug : le except 10.96.0.0/12 bloquait CoreDNS
   - to:
-    - ipBlock:
-        cidr: 0.0.0.0/0
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
     ports:
     - { protocol: UDP, port: 53 }
     - { protocol: TCP, port: 53 }
 
-  # 2. Communication interne : Autoriser la sortie vers les autres pods du namespace
+  # 2. Communication interne namespace mail-stack
   - to:
     - podSelector: {}
 
-  # 3. Accès Internet : Mises à jour, DNSBL et envoi SMTP
-  # Suppression des blocs "except" car ils bloquaient les communications ClusterIP
+  # 3. Longhorn (stockage NFS)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: longhorn-system
+    ports:
+    - { protocol: TCP, port: 2049 }
+
+  # 4. cert-manager (renouvellement certificats)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cert-manager
+    ports:
+    - { protocol: TCP, port: 443 }
+
+  # 5. kube-system (webhooks, API)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - { protocol: TCP, port: 443 }
+
+  # 6. Internet uniquement -- LAN et plage cluster EXCLUS
+  #    10.0.0.0/8 couvre : 10.96.0.0/12 (cluster) + 10.244.0.0/16 (pods)
+  #    192.168.0.0/16 couvre le LAN physique
   - to:
     - ipBlock:
         cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 192.168.0.0/16
     ports:
-    - { protocol: TCP, port: 80 }    # HTTP
-    - { protocol: TCP, port: 443 }   # HTTPS
-    - { protocol: TCP, port: 25 }    # SMTP sortant (Relais/Direct)
-    - { protocol: TCP, port: 587 }   # Submission
-    - { protocol: TCP, port: 465 }   # SMTPS
+    - { protocol: TCP, port: 80 }
+    - { protocol: TCP, port: 443 }
+    - { protocol: TCP, port: 25 }
+    - { protocol: TCP, port: 3310 }

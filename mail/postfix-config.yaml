@@ -1,3 +1,4 @@
+# mail/postfix-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,27 +9,45 @@ data:
     compatibility_level = 3.6
     maillog_file = /dev/stdout
 
+    # --- Identité ---
     myhostname = mail.k8s.malagasy.com
     mydomain = k8s.malagasy.com
     myorigin = $mydomain
 
+    # --- Réseau et Protocoles ---
     inet_interfaces = all
-    inet_protocols = ipv4
+    inet_protocols = all
+    smtp_address_preference = ipv4
 
+    # --- Destinations et Réseaux autorisés ---
     mydestination = localhost
     local_recipient_maps =
+    # Autorisation des plages internes et de l'IP publique du NAT pour le transit
+    mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24, 41.204.120.160/27
 
-    mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24
+    # --- RELAIS SORTANT (Via ton NAT) ---
+    relayhost = [192.168.6.219]:587
 
+    # --- Optimisations Réception & Tolérance NAT ---
+    # Désactive la recherche DNS inverse pour éviter les déconnexions "lost connection"
+    smtpd_peername_lookup = no
+    smtpd_delay_reject = yes
+    smtpd_helo_required = no
+    smtpd_data_restrictions = reject_unauth_pipelining
+    
+    # Paramètres DNS
     smtp_host_lookup = native, dns
     lmtp_host_lookup = native, dns
 
+    # --- Mappings MySQL (Base de données) ---
     virtual_mailbox_domains = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-domains.cf
     virtual_mailbox_maps = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-maps.cf
     virtual_alias_maps = proxy:mysql:/etc/postfix/mysql-virtual-alias-maps.cf
 
+    # --- Transport vers Dovecot (LMTP) ---
     virtual_transport = lmtp:inet:dovecot-service.mail-stack.svc.cluster.local:24
 
+    # --- Configuration SASL (Auth via Dovecot) ---
     smtpd_sasl_type = dovecot
     smtpd_sasl_path = inet:dovecot-service.mail-stack.svc.cluster.local:10000
     smtpd_sasl_auth_enable = yes
@@ -36,25 +55,26 @@ data:
     smtpd_sasl_authenticated_header = yes
     broken_sasl_auth_clients = yes
 
+    # --- Configuration TLS ---
     smtpd_tls_security_level = may
     smtpd_tls_cert_file = /etc/postfix/tls.crt
     smtpd_tls_key_file = /etc/postfix/tls.key
     smtpd_tls_loglevel = 1
 
+    # --- Intégration Rspamd (Antispam) ---
     smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     non_smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     milter_protocol = 6
     milter_default_action = accept
     milter_connect_timeout = 5s
 
+    # --- Restrictions de sécurité ---
     smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
-    # Service SMTP entrant (port 25) - MTA to MTA
+    # service type  private unpriv  chroot  wakeup  maxproc command + args
     smtp      inet  n       -       n       -       -       smtpd
-
-    # Submission (port 587) - Clients authentifiés avec STARTTLS
     submission inet n       -       n       -       -       smtpd
       -o syslog_name=postfix/submission
       -o smtpd_tls_security_level=encrypt
@@ -62,9 +82,6 @@ data:
       -o smtpd_sasl_type=dovecot
       -o smtpd_sasl_path=inet:dovecot-service.mail-stack.svc.cluster.local:10000
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-      -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
-
-    # SMTPS (port 465) - TLS wrapper mode
     smtps     inet  n       -       n       -       -       smtpd
       -o syslog_name=postfix/smtps
       -o smtpd_tls_wrappermode=yes
@@ -72,7 +89,6 @@ data:
       -o smtpd_sasl_type=dovecot
       -o smtpd_sasl_path=inet:dovecot-service.mail-stack.svc.cluster.local:10000
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-      -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
 
     pickup    unix  n       -       n       60      1       pickup
     cleanup   unix  n       -       n       -       0       cleanup
@@ -89,8 +105,8 @@ data:
     error     unix  -       -       n       -       -       error
     retry     unix  -       -       n       -       -       error
     discard   unix  -       -       n       -       -       discard
-    local     unix  -       n       n       -       -       local
-    virtual   unix  -       n       n       -       -       virtual
+    local     unix  -       -       n       -       -       local
+    virtual   unix  -       -       n       -       -       virtual
     lmtp      unix  -       -       n       -       -       lmtp
     anvil     unix  -       -       n       -       1       anvil
     scache    unix  -       -       n       -       1       scache

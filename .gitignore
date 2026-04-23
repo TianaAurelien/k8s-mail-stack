@@ -1,17 +1,32 @@
-# Secrets et mots de passe
+# --- SECRÉTS ET MOTS DE PASSE (CRITIQUE) ---
+# Fichiers spécifiques identifiés
 mysql_root.txt
-*.txt
 mail.key
+base/mail-config.yaml
 
-# Fichiers TLS/SSL
+# Extensions universelles de secrets
+*.txt
+*.key
+*.pem
+*.p12
+*.secret
+
+# --- INFRASTRUCTURE & TLS ---
+# On ignore les certificats et clés générés
 tls/*.key
 tls/*.crt
 **/*.key
 **/*.pem
+**/certs/*
 
-# Bases de données ClamAV (trop lourdes pour Git)
+# --- FICHIERS LOURDS & CACHE ---
+# Bases de données ClamAV
 security/clamav/*.cvd
+security/clamav/*.cld
 
-# Divers
-.DS_Store
+# --- LOGS ET TEMPORAIRES ---
 *.log
+.DS_Store
+.idea/
+.vscode/
+*.swp

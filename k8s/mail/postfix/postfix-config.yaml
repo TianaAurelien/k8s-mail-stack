@@ -7,8 +7,8 @@ metadata:
 data:
   main.cf: |
     compatibility_level = 3.6
-    # On log vers stdout pour kubectl logs ET vers /dev/log pour le sidecar
-    maillog_file = /dev/stdout
+    # Correction : on écrit dans un fichier pour que le sidecar puisse le lire
+    maillog_file = /var/log/mail.log
 
     # --- Identité ---
     myhostname = mail.k8s.malagasy.com

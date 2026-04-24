@@ -18,7 +18,7 @@ metadata:
 spec:
   type: LoadBalancer
   loadBalancerIP: 192.168.6.221
-  externalTrafficPolicy: Local # <--- CRITIQUE : Pour voir la vraie IP de l'attaquant
+  externalTrafficPolicy: Local
   ports:
     - {name: smtp, port: 25, targetPort: 25}
     - {name: submission, port: 587, targetPort: 587}
@@ -54,7 +54,6 @@ spec:
               sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/mysql-virtual-alias-maps.cf > /mnt/config-prep/mysql-virtual-alias-maps.cf
               cp /tmp/config-tpl/main.cf /mnt/config-prep/main.cf
               cp /tmp/config-tpl/master.cf /mnt/config-prep/master.cf
-              # Désactiver chroot pour syslog
               sed -i '/^smtp/s/y/n/4' /mnt/config-prep/master.cf
               sed -i '/^submission/s/y/n/4' /mnt/config-prep/master.cf
               sed -i '/^smtps/s/y/n/4' /mnt/config-prep/master.cf
@@ -77,7 +76,6 @@ spec:
               mountPath: /mnt/tls
               readOnly: true
       containers:
-        # CONTENEUR POSTFIX
         - name: postfix
           image: postfix-custom:v1
           env:
@@ -88,23 +86,26 @@ spec:
               mountPath: /etc/postfix
             - name: postfix-queue
               mountPath: /var/spool/postfix
-            - name: dev-log
-              mountPath: /dev/log # Partagé avec le sidecar
+            - name: shared-logs # Postfix écrit son fichier ici
+              mountPath: /var/log
 
-        # SIDECAR : REDIRECTION VERS LE NAT
         - name: rsyslog-exporter
           image: alpine
           command: ["/bin/sh", "-c"]
           args:
             - |
               apk add --no-cache rsyslog
-              echo "module(load=\"imuxsock\")" > /etc/rsyslog.conf
-              echo "input(type=\"imuxsock\" socket=\"/dev/log\")" >> /etc/rsyslog.conf
-              echo "*.* @192.168.6.219:514" >> /etc/rsyslog.conf
+              # Config pour lire le fichier et l'envoyer au NAT en UDP
+              cat <<EOF > /etc/rsyslog.conf
+              module(load="imfile")
+              input(type="imfile" File="/var/log/mail.log" Tag="postfix" Severity="info" Facility="mail")
+              *.* @192.168.6.219:514
+              EOF
+              touch /var/log/mail.log
               rsyslogd -n
           volumeMounts:
-            - name: dev-log
-              mountPath: /dev/log
+            - name: shared-logs # Lit le fichier produit par Postfix
+              mountPath: /var/log
 
       volumes:
         - name: postfix-config-tpl
@@ -112,8 +113,8 @@ spec:
             name: postfix-config
         - name: postfix-config-final
           emptyDir: {}
-        - name: dev-log
-          emptyDir: {} # Socket Unix partagée
+        - name: shared-logs # Volume partagé pour les fichiers de logs
+          emptyDir: {}
         - name: postfix-tls
           secret:
             secretName: mail-tls-prod-secret

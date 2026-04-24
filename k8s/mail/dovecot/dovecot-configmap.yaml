@@ -6,43 +6,28 @@ metadata:
 data:
   dovecot.conf: |
     # =========================
-    # LOGS (Indispensable pour kubectl logs)
+    # LOGS
     # =========================
     log_path = /dev/stdout
     info_log_path = /dev/stdout
-    debug_log_path = /dev/stdout
-    auth_verbose = yes
-    auth_debug = yes
-    auth_debug_passwords = yes
+
+    auth_verbose = no
+    auth_debug = no
 
     # =========================
-    # Protocoles et réseau
+    # PROTOCOLS
     # =========================
     protocols = imap pop3 lmtp
+
     listen = *
-    disable_plaintext_auth = no
+
+    disable_plaintext_auth = yes
     auth_mechanisms = plain login
 
     # =========================
-    # MAIL LOCATION & QUOTA
+    # MAIL LOCATION
     # =========================
     mail_location = maildir:/var/mail/%d/%n
-    mail_plugins = $mail_plugins quota
-    
-    protocol imap {
-      mail_plugins = $mail_plugins imap_quota
-    }
-    
-    protocol lmtp {
-      mail_plugins = $mail_plugins quota
-    }
-
-    plugin {
-      quota = count:User quota
-      quota_vsizes = yes
-      quota_rule = *:storage=10G
-      quota_exceeded_message = Boite mail pleine.
-    }
 
     # =========================
     # AUTH SQL
@@ -51,7 +36,7 @@ data:
       driver = sql
       args = /etc/dovecot/dovecot-sql.conf.ext
     }
-    
+
     userdb {
       driver = sql
       args = /etc/dovecot/dovecot-sql.conf.ext
@@ -60,50 +45,49 @@ data:
     # =========================
     # TLS
     # =========================
-    ssl = yes
+    ssl = required
     ssl_cert = </etc/dovecot/ssl/tls.crt
     ssl_key = </etc/dovecot/ssl/tls.key
+    ssl_min_protocol = TLSv1.2
 
     # =========================
-    # SERVICES (Fix syntax: no garbage after '{')
+    # LMTP
     # =========================
-    service imap-login {
-      inet_listener imap {
-        port = 143
-      }
-      inet_listener imaps {
-        port = 993
-      }
-    }
-
-    service pop3-login {
-      inet_listener pop3 {
-        port = 110
-      }
-      inet_listener pop3s {
-        port = 995
-      }
-    }
-
     service lmtp {
       inet_listener lmtp {
-        address = *
         port = 24
       }
     }
 
+    # =========================
+    # SASL (IMPORTANT FIX)
+    # =========================
     service auth {
-      unix_listener auth-userdb {
-        mode = 0666
+      unix_listener /var/spool/postfix/private/auth {
+        mode = 0660
+        user = postfix
+        group = postfix
       }
-      inet_listener auth-sasl {
+
+      inet_listener {
         port = 10000
       }
     }
 
+    # =========================
+    # PERFORMANCE / LIMITS
+    # =========================
+    service imap-login {
+      process_limit = 512
+      client_limit = 50
+    }
+
   dovecot-sql.conf.ext: |
     driver = mysql
-    connect = dbname=mailserver host=mariadb-service.mail-stack.svc.cluster.local user=mailuser password=__DB_PASSWORD__
+    connect = host=mariadb-service.mail-stack.svc.cluster.local dbname=mailserver user=mailuser password=__DB_PASSWORD__
+
     default_pass_scheme = SHA512-CRYPT
-    password_query = SELECT email AS user, password AS password FROM virtual_users WHERE email='%u';
+
+    password_query = SELECT password FROM virtual_users WHERE email='%u' AND enabled=1;
+
     user_query = SELECT '/var/mail/%d/%n' AS home, 1000 AS uid, 1000 AS gid FROM virtual_users WHERE email='%u' AND enabled=1;

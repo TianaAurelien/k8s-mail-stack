@@ -17,7 +17,6 @@ metadata:
 spec:
   type: LoadBalancer
   loadBalancerIP: 192.168.6.221
-  externalTrafficPolicy: Local
   ports:
     - {name: smtp, port: 25, targetPort: 25}
     - {name: submission, port: 587, targetPort: 587}
@@ -44,26 +43,60 @@ spec:
       initContainers:
         - name: init-postfix-config
           image: postfix-custom:v1
-          command: ["sh", "-c"]
-          args:
+          command:
+            - sh
+            - -c
             - |
+              # 1. Préparer le répertoire de configuration
               cp -a /etc/postfix/* /mnt/config-prep/
+
+              # 2. Injecter les mots de passe dans les fichiers de mapping MySQL
               sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/mysql-virtual-mailbox-domains.cf > /mnt/config-prep/mysql-virtual-mailbox-domains.cf
               sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/mysql-virtual-mailbox-maps.cf > /mnt/config-prep/mysql-virtual-mailbox-maps.cf
               sed "s/__DB_PASSWORD__/$MYSQL_PASSWORD/g" /tmp/config-tpl/mysql-virtual-alias-maps.cf > /mnt/config-prep/mysql-virtual-alias-maps.cf
+
+              # 3. Copier les fichiers principaux depuis le ConfigMap
               cp /tmp/config-tpl/main.cf /mnt/config-prep/main.cf
               cp /tmp/config-tpl/master.cf /mnt/config-prep/master.cf
+
+              # 4. Désactiver le CHROOT pour permettre la résolution DNS interne
               sed -i '/^smtp/s/y/n/4' /mnt/config-prep/master.cf
               sed -i '/^submission/s/y/n/4' /mnt/config-prep/master.cf
               sed -i '/^smtps/s/y/n/4' /mnt/config-prep/master.cf
+
+              # 5. CONFIGURATION SASL (Fix pour Roundcube / Auth Dovecot)
+              # On ajoute les définitions de services à la fin du fichier pour écraser les précédentes
+              cat <<EOF >> /mnt/config-prep/master.cf
+              submission inet n       -       n       -       -       smtpd
+                -o smtpd_sasl_auth_enable=yes
+                -o smtpd_sasl_type=dovecot
+                -o smtpd_sasl_path=inet:dovecot-service.mail-stack.svc.cluster.local:10000
+                -o smtpd_sasl_security_options=noanonymous
+                -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+              smtps     inet  n       -       n       -       -       smtpd
+                -o smtpd_sasl_auth_enable=yes
+                -o smtpd_sasl_type=dovecot
+                -o smtpd_sasl_path=inet:dovecot-service.mail-stack.svc.cluster.local:10000
+                -o smtpd_sasl_security_options=noanonymous
+                -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+              EOF
+
+              # 6. DNS et TLS
               cp /etc/resolv.conf /mnt/config-prep/resolv.conf
               cp /mnt/tls/tls.crt /mnt/config-prep/tls.crt
               cp /mnt/tls/tls.key /mnt/config-prep/tls.key
+
+              # 7. Permissions strictes
               chown -R root:root /mnt/config-prep
+              find /mnt/config-prep -type d -exec chmod 755 {} +
+              find /mnt/config-prep -type f -exec chmod 644 {} +
+              chmod 600 /mnt/config-prep/tls.key
           env:
             - name: MYSQL_PASSWORD
               valueFrom:
-                secretKeyRef: {name: mail-secrets, key: MYSQL_PASSWORD}
+                secretKeyRef:
+                  name: mail-secrets
+                  key: MYSQL_PASSWORD
           volumeMounts:
             - name: postfix-config-tpl
               mountPath: /tmp/config-tpl
@@ -83,32 +116,11 @@ spec:
               mountPath: /etc/postfix
             - name: postfix-queue
               mountPath: /var/spool/postfix
-            - name: shared-logs
-              mountPath: /var/log
-
-        - name: rsyslog-exporter
-          image: alpine
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              apk add --no-cache rsyslog
-              touch /var/log/mail.log
-              # On utilise le fichier monté depuis le ConfigMap
-              rsyslogd -n -f /etc/rsyslog-custom.conf
-          volumeMounts:
-            - name: shared-logs
-              mountPath: /var/log
-            - name: postfix-config-tpl
-              mountPath: /etc/rsyslog-custom.conf
-              subPath: rsyslog.conf
-
       volumes:
         - name: postfix-config-tpl
           configMap:
             name: postfix-config
         - name: postfix-config-final
-          emptyDir: {}
-        - name: shared-logs
           emptyDir: {}
         - name: postfix-tls
           secret:

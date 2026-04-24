@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamav
+  namespace: mail-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clamav
+  template:
+    metadata:
+      labels:
+        app: clamav
+    spec:
+      containers:
+      - image: clamav/clamav:latest
+        name: clamav
+        ports:
+        - containerPort: 3310
+        resources:
+          limits:
+            cpu: "1"
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+        - mountPath: /var/lib/clamav
+          name: clamav-data
+      volumes:
+      - name: clamav-data
+        persistentVolumeClaim:
+          claimName: clamav-pvc

@@ -1,28 +1,25 @@
 # --- SECRÉTS ET MOTS DE PASSE (CRITIQUE) ---
-# Fichiers spécifiques identifiés
-mysql_root.txt
-mail.key
-base/mail-config.yaml
+# Fichiers à la racine
+/mysql_root.txt
+/mail.key
+/security/dkim/mail.key
 
-# Extensions universelles de secrets
-*.txt
-*.key
-*.pem
-*.p12
-*.secret
+# Fichiers de configuration contenant des secrets (K8s)
+# On ignore les fichiers qui contiennent des passwords/tokens en clair
+k8s/base/mail-config.yaml
 
 # --- INFRASTRUCTURE & TLS ---
-# On ignore les certificats et clés générés
-tls/*.key
-tls/*.crt
+# On ignore les sauvegardes de certificats et clés privées
+k8s/security/certs_backup/
 **/*.key
 **/*.pem
-**/certs/*
+**/*.crt
 
-# --- FICHIERS LOURDS & CACHE ---
-# Bases de données ClamAV
+# --- FICHIERS LOURDS (LAB) ---
+# Bases de données ClamAV (très lourd pour Git)
+k8s/security/clamav/*.cvd
+k8s/security/clamav/*.cld
 security/clamav/*.cvd
-security/clamav/*.cld
 
 # --- LOGS ET TEMPORAIRES ---
 *.log
@@ -30,3 +27,4 @@ security/clamav/*.cld
 .idea/
 .vscode/
 *.swp
+node_modules/

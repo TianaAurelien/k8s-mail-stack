@@ -1,0 +1,66 @@
+expose:
+  type: loadBalancer
+  tls:
+    enabled: false  # Désactivé pour le moment (Lab)
+  loadBalancer:
+    name: harbor-lb
+    IP: 192.168.6.81
+  ingress:
+    hosts:
+      core: harbor.k8s.malagasy.com
+    controller: nginx
+    className: nginx
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+externalURL: http://harbor.k8s.malagasy.com
+
+# Configuration Haute Disponibilité (HA)
+portal:
+  replicas: 3
+core:
+  replicas: 3
+jobservice:
+  replicas: 3
+registry:
+  replicas: 3
+
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+  persistentVolumeClaim:
+    registry:
+      storageClass: "longhorn-static"
+      accessMode: ReadWriteMany
+      size: 50Gi
+    jobservice:
+      storageClass: "longhorn-static"
+      accessMode: ReadWriteMany
+      size: 5Gi
+    chartmuseum:
+      storageClass: "longhorn-static"
+      accessMode: ReadWriteOnce
+      size: 5Gi
+    # Ajout crucial pour le mode HA interne
+    database:
+      storageClass: "longhorn-static"
+      accessMode: ReadWriteOnce
+      size: 5Gi
+    redis:
+      storageClass: "longhorn-static"
+      accessMode: ReadWriteOnce
+      size: 1Gi
+
+database:
+  type: internal
+redis:
+  type: internal
+
+# Recommandé pour éviter les problèmes de session en multi-réplicas
+proxy:
+  httpProxy: ""
+  httpsProxy: ""
+  noProxy: "127.0.0.1,localhost,.local,.internal"

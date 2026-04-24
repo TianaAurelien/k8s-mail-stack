@@ -1,0 +1,38 @@
+global:
+  domain: argocd.k8s.malagasy.com
+
+controller:
+  replicas: 1
+
+server:
+  replicas: 3
+  service:
+    type: LoadBalancer
+    annotations:
+      # Fixe l'IP via MetalLB
+      metallb.universe.tf/loadBalancerIPs: 192.168.6.80
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      # Whitelist supprimée pour accès total
+    hosts:
+      - argocd.k8s.malagasy.com
+
+repoServer:
+  replicas: 3
+
+redis:
+  ha:
+    enabled: true
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: "kubernetes.io/hostname"
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: argocd

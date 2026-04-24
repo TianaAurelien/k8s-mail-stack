@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: transfer-pod
+  namespace: mail-stack
+spec:
+  containers:
+  - name: transfer
+    image: busybox
+    command: ["/bin/sh", "-c", "sleep 3600"]
+    volumeMounts:
+    - name: old-data
+      mountPath: /mnt/old
+    - name: new-data
+      mountPath: /mnt/new
+  volumes:
+  - name: old-data
+    persistentVolumeClaim:
+      claimName: mariadb-pvc  # Vérifie bien que c'est le nom de ton ANCIEN PVC
+  - name: new-data
+    persistentVolumeClaim:
+      claimName: data-mariadb-galera-0

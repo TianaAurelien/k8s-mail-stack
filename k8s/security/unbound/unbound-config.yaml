@@ -18,6 +18,12 @@ data:
       access-control: 172.16.0.0/12 allow
       access-control: 192.168.0.0/16 allow
 
+      # --- ZONE LOCALE POUR LE CLUSTER ---
+      local-zone: "k8s.malagasy.com." static
+      local-data: "argocd.k8s.malagasy.com. IN A 192.168.6.80"
+      # Tu pourras ajouter harbor ici plus tard :
+      # local-data: "harbor.k8s.malagasy.com. IN A 192.168.6.81"
+
       # Sécurité et masquage
       hide-identity: yes
       hide-version: yes

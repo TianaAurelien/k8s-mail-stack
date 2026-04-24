@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rspamd-dkim-config
+  namespace: mail-stack
+data:
+  dkim_signing.conf: |
+    # Rspamd cherche la clé basée sur le domaine de l'expéditeur et le sélecteur
+    path = "/var/lib/rspamd/dkim/$domain.$selector.key";
+    selector = "default";
+    allow_untrusted = true;
+    use_domain = "header";
+    sign_local = true;
+    symbol = "DKIM_SIGNED";

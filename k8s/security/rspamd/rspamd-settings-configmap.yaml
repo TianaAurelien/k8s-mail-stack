@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rspamd-settings
+  namespace: mail-stack
+data:
+  settings.conf: |
+    options {
+        nameserver = ["10.96.0.10"];
+        timeout = 2.0;
+    }
+    milter_headers {
+        skip_local = false;
+        skip_authenticated = false;
+    }
+    actions {
+        reject = 15.0;
+        add_header = 6.0;
+        greylist = 4.0;
+    }

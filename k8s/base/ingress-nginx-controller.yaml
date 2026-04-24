@@ -14,33 +14,58 @@ spec:
         app.kubernetes.io/name: ingress-nginx
     spec:
       serviceAccountName: ingress-nginx
-
       containers:
       - name: controller
         image: registry.k8s.io/ingress-nginx/controller:v1.14.3
-
         args:
           - /nginx-ingress-controller
           - --controller-class=k8s.io/ingress-nginx
           - --ingress-class=nginx
           - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
-
-          # WEBHOOK (OK conservé)
           - --validating-webhook=:8443
           - --validating-webhook-certificate=/usr/local/certificates/cert
           - --validating-webhook-key=/usr/local/certificates/key
-
+        env:
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
         ports:
-          - containerPort: 80
-          - containerPort: 443
-          - containerPort: 8443
-
+          - name: http
+            containerPort: 80
+          - name: https
+            containerPort: 443
+          - name: webhook
+            containerPort: 8443
         volumeMounts:
           - name: webhook-cert
             mountPath: /usr/local/certificates/
             readOnly: true
-
       volumes:
         - name: webhook-cert
           secret:
             secretName: ingress-nginx-admission
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  annotations:
+    # Force MetalLB à utiliser l'IP NATée pour le HTTPS
+    metallb.universe.tf/loadBalancerIPs: 192.168.6.226
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: ingress-nginx
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: https
+      port: 443
+      targetPort: 443

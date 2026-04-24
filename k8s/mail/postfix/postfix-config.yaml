@@ -5,9 +5,30 @@ metadata:
   name: postfix-config
   namespace: mail-stack
 data:
+  # --- Configuration Rsyslog pour le Sidecar ---
+  rsyslog.conf: |
+    # Définit le répertoire de travail pour les fichiers de statut (évite l'erreur imfile)
+    global(workDirectory="/var/run")
+
+    module(load="imfile")
+
+    # Lecture du fichier partagé par Postfix
+    input(type="imfile"
+          File="/var/log/mail.log"
+          Tag="postfix"
+          StateFile="state-postfix"
+          readMode="0"
+          Facility="mail")
+
+    # Envoi vers le serveur NAT distant en UDP
+    *.* action(type="omfwd" 
+               target="192.168.6.219" 
+               port="514" 
+               protocol="udp")
+
   main.cf: |
     compatibility_level = 3.6
-    # Correction : on écrit dans un fichier pour que le sidecar puisse le lire
+    # On écrit dans un fichier pour que le sidecar puisse le lire
     maillog_file = /var/log/mail.log
 
     # --- Identité ---

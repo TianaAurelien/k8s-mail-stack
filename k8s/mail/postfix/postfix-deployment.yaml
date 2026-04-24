@@ -1,4 +1,3 @@
-# k8s/mail/postfix/postfix-deployment.yaml
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -64,9 +63,7 @@ spec:
           env:
             - name: MYSQL_PASSWORD
               valueFrom:
-                secretKeyRef:
-                  name: mail-secrets
-                  key: MYSQL_PASSWORD
+                secretKeyRef: {name: mail-secrets, key: MYSQL_PASSWORD}
           volumeMounts:
             - name: postfix-config-tpl
               mountPath: /tmp/config-tpl
@@ -86,7 +83,7 @@ spec:
               mountPath: /etc/postfix
             - name: postfix-queue
               mountPath: /var/spool/postfix
-            - name: shared-logs # Postfix écrit son fichier ici
+            - name: shared-logs
               mountPath: /var/log
 
         - name: rsyslog-exporter
@@ -95,17 +92,15 @@ spec:
           args:
             - |
               apk add --no-cache rsyslog
-              # Config pour lire le fichier et l'envoyer au NAT en UDP
-              cat <<EOF > /etc/rsyslog.conf
-              module(load="imfile")
-              input(type="imfile" File="/var/log/mail.log" Tag="postfix" Severity="info" Facility="mail")
-              *.* @192.168.6.219:514
-              EOF
               touch /var/log/mail.log
-              rsyslogd -n
+              # On utilise le fichier monté depuis le ConfigMap
+              rsyslogd -n -f /etc/rsyslog-custom.conf
           volumeMounts:
-            - name: shared-logs # Lit le fichier produit par Postfix
+            - name: shared-logs
               mountPath: /var/log
+            - name: postfix-config-tpl
+              mountPath: /etc/rsyslog-custom.conf
+              subPath: rsyslog.conf
 
       volumes:
         - name: postfix-config-tpl
@@ -113,7 +108,7 @@ spec:
             name: postfix-config
         - name: postfix-config-final
           emptyDir: {}
-        - name: shared-logs # Volume partagé pour les fichiers de logs
+        - name: shared-logs
           emptyDir: {}
         - name: postfix-tls
           secret:

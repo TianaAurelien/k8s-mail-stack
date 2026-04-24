@@ -7,12 +7,10 @@ metadata:
 data:
   # --- Configuration Rsyslog pour le Sidecar ---
   rsyslog.conf: |
-    # Définit le répertoire de travail pour les fichiers de statut (évite l'erreur imfile)
     global(workDirectory="/var/run")
-
     module(load="imfile")
 
-    # Lecture du fichier partagé par Postfix
+    # Lecture du fichier partagé (on ajoute StateFile pour ne rien rater)
     input(type="imfile"
           File="/var/log/mail.log"
           Tag="postfix"
@@ -28,7 +26,6 @@ data:
 
   main.cf: |
     compatibility_level = 3.6
-    # On écrit dans un fichier pour que le sidecar puisse le lire
     maillog_file = /var/log/mail.log
 
     # --- Identité ---
@@ -36,12 +33,12 @@ data:
     mydomain = k8s.malagasy.com
     myorigin = $mydomain
 
-    # --- Réseau et Protocoles ---
+    # --- Réseau ---
     inet_interfaces = all
     inet_protocols = all
     smtp_address_preference = ipv4
 
-    # --- Destinations et Réseaux autorisés ---
+    # --- Destinations ---
     mydestination = localhost
     local_recipient_maps =
     mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24, 41.204.120.160/27
@@ -77,7 +74,7 @@ data:
     smtpd_tls_key_file = /etc/postfix/tls.key
     smtpd_tls_loglevel = 1
 
-    # --- Rspamd ---
+    # --- Milters (Rspamd) ---
     smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     non_smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     milter_protocol = 6

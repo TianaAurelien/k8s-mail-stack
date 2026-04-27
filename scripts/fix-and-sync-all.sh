@@ -11,41 +11,44 @@ NC='\033[0m'
 
 echo -e "${BLUE}🚀 Lancement de la maintenance intelligente MariaDB...${NC}\n"
 
-# 1. Vérification des pods nécessaires
-echo -ne "🔍 Vérification de la disponibilité des services... "
+# 1. Détection dynamique d'un pod MariaDB prêt
+echo -ne "🔍 Recherche d'un nœud MariaDB disponible... "
+# On cherche n'importe quel pod du cluster qui est en phase 'Running'
+POD_MARIADB=$(kubectl get pods -n "$NS" -l app=mariadb-galera --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' || echo "")
 
-# MariaDB : On utilise ton nom de pod exact (StatefulSet)
-POD_MARIADB="mariadb-galera-0"
+if [[ -z "$POD_MARIADB" ]]; then
+    echo -e "${RED}ERREUR : Aucun pod MariaDB n'est en ligne.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}OK ($POD_MARIADB)${NC}"
 
-# Dovecot : On cherche un pod qui est spécifiquement en état 'Running'
+# Dovecot : nécessaire pour générer les hashes de mots de passe
+echo -ne "🔍 Vérification de Dovecot... "
 POD_DOVECOT=$(kubectl get pods -n "$NS" -l app=dovecot --field-selector=status.phase=Running -o name | head -n 1 | cut -d'/' -f2 || echo "")
 
-# Vérification finale de l'existence des pods
-if ! kubectl get pod "$POD_MARIADB" -n "$NS" &>/dev/null || [[ -z "$POD_DOVECOT" ]]; then
-    echo -e "${RED}ERREUR${NC}"
-    echo -e "${RED}❌ Un ou plusieurs pods sont introuvables ou non prêts.${NC}"
-    echo -e "   MariaDB: [${POD_MARIADB}] | Dovecot: [${POD_DOVECOT:-NON TROUVÉ}]"
+if [[ -z "$POD_DOVECOT" ]]; then
+    echo -e "${RED}ERREUR : Aucun pod Dovecot n'est prêt.${NC}"
     exit 1
 fi
 echo -e "${GREEN}OK ($POD_DOVECOT)${NC}"
 
 # 2. Récupération du mot de passe root
 echo -ne "🔑 Récupération du secret SQL... "
-# Note : Vérifie bien si ton secret est 'mail-secrets' ou 'mail-config'
 TARGET_PASS=$(kubectl get secret mail-secrets -n "$NS" -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' | base64 --decode)
 SQL_AUTH="-u root -p$TARGET_PASS"
+RUN_SQL="kubectl exec -i $POD_MARIADB -n $NS -- mariadb $SQL_AUTH"
 echo -e "${GREEN}OK${NC}"
 
 # 3. Vérification/Création des bases de données
 echo -e "📦 Vérification des Bases de Données..."
 for DB in "mailserver" "roundcube"; do
-    kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH -e "CREATE DATABASE IF NOT EXISTS $DB;"
-    echo -e "  ➡ $DB : ${GREEN}Vérifié/Créé${NC}"
+    $RUN_SQL -e "CREATE DATABASE IF NOT EXISTS $DB;"
+    echo -e "  ➡ $DB : ${GREEN}Vérifié${NC}"
 done
 
 # 4. Réparation et Structuration des Tables
-echo -e "🛠  Réparation des tables et nettoyage des doublons..."
-kubectl exec -i "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver <<EOF
+echo -e "🛠  Réparation des tables et nettoyage..."
+$RUN_SQL mailserver <<EOF
 SET FOREIGN_KEY_CHECKS = 0;
 
 CREATE TABLE IF NOT EXISTS virtual_domains (
@@ -54,10 +57,6 @@ CREATE TABLE IF NOT EXISTS virtual_domains (
   PRIMARY KEY (id),
   UNIQUE KEY (name)
 ) ENGINE=InnoDB;
-
--- Nettoyage des doublons si existants
-DELETE t1 FROM virtual_domains t1 INNER JOIN virtual_domains t2  
-WHERE t1.id > t2.id AND t1.name = t2.name;
 
 CREATE TABLE IF NOT EXISTS virtual_users (
   id INT NOT NULL AUTO_INCREMENT,
@@ -88,7 +87,7 @@ echo -e "  ➡ Schémas et Index : ${GREEN}OK${NC}"
 # 5. Vérification des privilèges SQL
 echo -e "👤 Vérification des accès SQL..."
 for USER in "mailuser" "dovecot" "roundcube"; do
-    kubectl exec -i "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH <<EOF
+    $RUN_SQL <<EOF
 CREATE USER IF NOT EXISTS '$USER'@'%' IDENTIFIED BY '$TARGET_PASS';
 ALTER USER '$USER'@'%' IDENTIFIED BY '$TARGET_PASS';
 GRANT ALL PRIVILEGES ON mailserver.* TO 'mailuser'@'%';
@@ -120,10 +119,9 @@ for u in "${DEFAULT_USERS[@]}"; do
     DOMAIN=$(echo "$EMAIL" | cut -d'@' -f2)
     QUOTA_BYTES=$(awk "BEGIN {print int($QUOTA_GB * 1024 * 1024 * 1024)}")
     
-    # Génération du Hash via Dovecot (SHA512-CRYPT)
     HASH=$(kubectl exec -n "$NS" "$POD_DOVECOT" -- doveadm pw -s SHA512-CRYPT -p "$PASS" | tr -d '\n')
     
-    kubectl exec -i "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver <<EOF
+    $RUN_SQL mailserver <<EOF
 INSERT IGNORE INTO virtual_domains (name) VALUES ('$DOMAIN');
 INSERT INTO virtual_users (domain_id, email, password, quota, enabled)
 SELECT id, '$EMAIL', '$HASH', $QUOTA_BYTES, 1 FROM virtual_domains WHERE name='$DOMAIN'
@@ -144,7 +142,7 @@ DEFAULT_ALIASES=(
 for a in "${DEFAULT_ALIASES[@]}"; do
     read -r SOURCE DEST <<< "$a"
     DOMAIN=$(echo "$SOURCE" | cut -d'@' -f2)
-    kubectl exec -i "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver <<EOF
+    $RUN_SQL mailserver <<EOF
 INSERT INTO virtual_aliases (domain_id, source, destination)
 SELECT id, '$SOURCE', '$DEST' FROM virtual_domains WHERE name='$DOMAIN'
 ON DUPLICATE KEY UPDATE destination='$DEST';
@@ -152,6 +150,6 @@ EOF
 done
 
 echo -e "\n${BLUE}📊 --- RÉCAPITULATIF FINAL --- ${NC}"
-kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver -e "SELECT email, quota/1024/1024/1024 as 'Quota_GB' FROM virtual_users; SELECT source, destination FROM virtual_aliases;"
+$RUN_SQL mailserver -e "SELECT email, quota/1024/1024/1024 as 'Quota_GB' FROM virtual_users; SELECT source, destination FROM virtual_aliases;"
 
 echo -e "\n${GREEN}✨ Félicitations Aurelien ! La maintenance est terminée.${NC}"

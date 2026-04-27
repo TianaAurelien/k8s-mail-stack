@@ -1,5 +1,5 @@
 ---
-# MariaDB Galera Cluster 3 nodes - HA Production
+# MariaDB Galera Cluster 3 nodes - HA Robust Production
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -56,34 +56,31 @@ spec:
         - |
           set -ex
           DATADIR="/var/lib/mysql"
-          GRASTAT="$DATADIR/grastat.dat"
+          # On définit tous les membres pour permettre la découverte mutuelle
+          GCOMM="gcomm://mariadb-galera-0.mariadb-galera,mariadb-galera-1.mariadb-galera,mariadb-galera-2.mariadb-galera"
 
-          # Si c'est le tout premier démarrage (pod 0 avec dossier vide)
-          if [ ! -d "$DATADIR/mysql" ] && [ "$HOSTNAME" = "mariadb-galera-0" ]; then
-              echo "First run of pod 0, initializing cluster..."
-              exec docker-entrypoint.sh mariadbd --wsrep-new-cluster --wsrep_cluster_address="gcomm://"
-          fi
-
-          # Logique de Bootstrap pour le pod 0 (reprise après crash ou arrêt)
-          if [ "$HOSTNAME" = "mariadb-galera-0" ]; then
-              if [ -f "$GRASTAT" ]; then
-                  sed -i 's/safe_to_bootstrap: 0/safe_to_bootstrap: 1/' "$GRASTAT"
+          # 1. Cas du PREMIER démarrage (Volume vierge)
+          if [ ! -d "$DATADIR/mysql" ]; then
+              if [ "$HOSTNAME" = "mariadb-galera-0" ]; then
+                  echo "Fresh cluster: Initializing from pod 0..."
+                  exec docker-entrypoint.sh mariadbd --wsrep-new-cluster --wsrep_cluster_address="gcomm://"
+              else
+                  echo "Fresh cluster: Waiting for pod 0..."
+                  sleep 30
+                  exec docker-entrypoint.sh mariadbd --wsrep_cluster_address="gcomm://mariadb-galera-0.mariadb-galera"
               fi
-              echo "Starting node 0 as Potential Bootstrap Leader..."
-              exec docker-entrypoint.sh mariadbd --wsrep-new-cluster --wsrep_cluster_address="gcomm://"
-          else
-              echo "Starting node and joining cluster..."
-              # On attend plus longtemps pour l'init des fichiers système et SQL
-              sleep 45
-              exec docker-entrypoint.sh mariadbd --wsrep_cluster_address="gcomm://mariadb-galera-0.mariadb-galera.mail-stack.svc.cluster.local"
           fi
+
+          # 2. Cas du REDÉMARRAGE (Cluster déjà existant)
+          # On ne force PAS safe_to_bootstrap. On laisse les nœuds se synchroniser.
+          echo "Restart detected: Attempting to join cluster via $GCOMM..."
+          exec docker-entrypoint.sh mariadbd --wsrep_cluster_address="$GCOMM"
         ports:
         - containerPort: 3306
         - containerPort: 4567
         - containerPort: 4568
         - containerPort: 4444
         env:
-        # ✅ RÉFÉRENCE AU SECRET AU LIEU DE "VALUE"
         - name: MYSQL_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -94,15 +91,15 @@ spec:
         livenessProbe:
           exec:
             command: ["/bin/sh", "-c", "mariadb-admin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD}"]
-          initialDelaySeconds: 180
-          periodSeconds: 15
+          initialDelaySeconds: 120
+          periodSeconds: 20
         readinessProbe:
           exec:
             command:
             - /bin/sh
             - -c
             - "mariadb-admin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD}"
-          initialDelaySeconds: 60
+          initialDelaySeconds: 45
           periodSeconds: 10
         volumeMounts:
         - name: data

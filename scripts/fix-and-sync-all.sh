@@ -11,40 +11,53 @@ NC='\033[0m'
 
 echo -e "${BLUE}🚀 Lancement de la maintenance intelligente MariaDB...${NC}\n"
 
-# 1. Récupération du mot de passe root
-echo -ne "🔑 Récupération du secret... "
+# 1. Vérification des pods nécessaires
+echo -ne "🔍 Vérification de la disponibilité des services... "
+
+# MariaDB : On utilise ton nom de pod exact (StatefulSet)
+POD_MARIADB="mariadb-galera-0"
+
+# Dovecot : On cherche un pod qui est spécifiquement en état 'Running'
+POD_DOVECOT=$(kubectl get pods -n "$NS" -l app=dovecot --field-selector=status.phase=Running -o name | head -n 1 | cut -d'/' -f2 || echo "")
+
+# Vérification finale de l'existence des pods
+if ! kubectl get pod "$POD_MARIADB" -n "$NS" &>/dev/null || [[ -z "$POD_DOVECOT" ]]; then
+    echo -e "${RED}ERREUR${NC}"
+    echo -e "${RED}❌ Un ou plusieurs pods sont introuvables ou non prêts.${NC}"
+    echo -e "   MariaDB: [${POD_MARIADB}] | Dovecot: [${POD_DOVECOT:-NON TROUVÉ}]"
+    exit 1
+fi
+echo -e "${GREEN}OK ($POD_DOVECOT)${NC}"
+
+# 2. Récupération du mot de passe root
+echo -ne "🔑 Récupération du secret SQL... "
+# Note : Vérifie bien si ton secret est 'mail-secrets' ou 'mail-config'
 TARGET_PASS=$(kubectl get secret mail-secrets -n "$NS" -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' | base64 --decode)
+SQL_AUTH="-u root -p$TARGET_PASS"
 echo -e "${GREEN}OK${NC}"
 
-POD_MARIADB="mariadb-galera-0"
-POD_DOVECOT=$(kubectl get pods -n "$NS" -l app=dovecot -o jsonpath='{.items[0].metadata.name}')
-SQL_AUTH="-u root -p$TARGET_PASS"
-
-# 2. Vérification/Création des bases de données
+# 3. Vérification/Création des bases de données
 echo -e "📦 Vérification des Bases de Données..."
 for DB in "mailserver" "roundcube"; do
     kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH -e "CREATE DATABASE IF NOT EXISTS $DB;"
     echo -e "  ➡ $DB : ${GREEN}Vérifié/Créé${NC}"
 done
 
-# 3. Réparation et Structuration des Tables
-echo -e "🛠️  Réparation des tables et nettoyage des doublons..."
+# 4. Réparation et Structuration des Tables
+echo -e "🛠  Réparation des tables et nettoyage des doublons..."
 kubectl exec -i "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver <<EOF
 SET FOREIGN_KEY_CHECKS = 0;
 
--- Création des tables si inexistantes
 CREATE TABLE IF NOT EXISTS virtual_domains (
   id INT NOT NULL AUTO_INCREMENT,
   name VARCHAR(50) NOT NULL,
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY (name)
 ) ENGINE=InnoDB;
 
--- NETTOYAGE DES DOUBLONS de domaines (on garde l'ID le plus bas)
-DELETE t1 FROM virtual_domains t1 INNER JOIN virtual_domains t2 
+-- Nettoyage des doublons si existants
+DELETE t1 FROM virtual_domains t1 INNER JOIN virtual_domains t2  
 WHERE t1.id > t2.id AND t1.name = t2.name;
-
--- Ajout de la contrainte UNIQUE si elle n'existe pas (pour éviter les futurs doublons)
-ALTER TABLE virtual_domains ADD UNIQUE INDEX IF NOT EXISTS (name);
 
 CREATE TABLE IF NOT EXISTS virtual_users (
   id INT NOT NULL AUTO_INCREMENT,
@@ -72,7 +85,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 EOF
 echo -e "  ➡ Schémas et Index : ${GREEN}OK${NC}"
 
-# 4. Vérification des utilisateurs SQL (mailuser, dovecot, roundcube)
+# 5. Vérification des privilèges SQL
 echo -e "👤 Vérification des accès SQL..."
 for USER in "mailuser" "dovecot" "roundcube"; do
     kubectl exec -i "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH <<EOF
@@ -86,8 +99,8 @@ EOF
     echo -e "  ➡ Utilisateur $USER : ${GREEN}Vérifié${NC}"
 done
 
-# 5. Synchronisation des Comptes Mails et Alias
-echo -e "👥 Synchronisation des données (Domaines, Users, Alias)..."
+# 6. Synchronisation des Comptes Mails
+echo -e "👥 Synchronisation des comptes mails (Dovecot Hash)..."
 DEFAULT_USERS=(
     "admin@k8s.malagasy.com k8sadmin 2"
     "harivony@k8s.malagasy.com k8sharivony 1"
@@ -106,6 +119,8 @@ for u in "${DEFAULT_USERS[@]}"; do
     read -r EMAIL PASS QUOTA_GB <<< "$u"
     DOMAIN=$(echo "$EMAIL" | cut -d'@' -f2)
     QUOTA_BYTES=$(awk "BEGIN {print int($QUOTA_GB * 1024 * 1024 * 1024)}")
+    
+    # Génération du Hash via Dovecot (SHA512-CRYPT)
     HASH=$(kubectl exec -n "$NS" "$POD_DOVECOT" -- doveadm pw -s SHA512-CRYPT -p "$PASS" | tr -d '\n')
     
     kubectl exec -i "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver <<EOF
@@ -114,9 +129,11 @@ INSERT INTO virtual_users (domain_id, email, password, quota, enabled)
 SELECT id, '$EMAIL', '$HASH', $QUOTA_BYTES, 1 FROM virtual_domains WHERE name='$DOMAIN'
 ON DUPLICATE KEY UPDATE password='$HASH', quota=$QUOTA_BYTES;
 EOF
+    echo -e "  ➡ $EMAIL : ${GREEN}OK${NC}"
 done
 
-# Ajout des Alias
+# 7. Synchronisation des Alias
+echo -e "🔗 Synchronisation des alias..."
 DEFAULT_ALIASES=(
     "postmaster@k8s.malagasy.com admin@k8s.malagasy.com"
     "abuse@k8s.malagasy.com admin@k8s.malagasy.com"
@@ -133,24 +150,8 @@ SELECT id, '$SOURCE', '$DEST' FROM virtual_domains WHERE name='$DOMAIN'
 ON DUPLICATE KEY UPDATE destination='$DEST';
 EOF
 done
-echo -e "  ➡ Données : ${GREEN}Synchronisées${NC}"
 
-# 6. RÉSUMÉ FINAL DES DONNÉES
-echo -e "\n${BLUE}📊 --- RÉCAPITULATIF DES DONNÉES --- ${NC}"
+echo -e "\n${BLUE}📊 --- RÉCAPITULATIF FINAL --- ${NC}"
+kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver -e "SELECT email, quota/1024/1024/1024 as 'Quota_GB' FROM virtual_users; SELECT source, destination FROM virtual_aliases;"
 
-echo -e "\n${YELLOW}[Bases de données]${NC}"
-kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH -e "SHOW DATABASES;"
-
-echo -e "\n${YELLOW}[Tables dans mailserver]${NC}"
-kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver -e "SHOW TABLES;"
-
-echo -e "\n${YELLOW}[Domaines (Nettoyés)]${NC}"
-kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver -e "SELECT * FROM virtual_domains;"
-
-echo -e "\n${YELLOW}[Utilisateurs Mails]${NC}"
-kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver -e "SELECT id, email, quota FROM virtual_users;"
-
-echo -e "\n${YELLOW}[Alias]${NC}"
-kubectl exec "$POD_MARIADB" -n "$NS" -- mariadb $SQL_AUTH mailserver -e "SELECT * FROM virtual_aliases;"
-
-echo -e "\n${GREEN}✨ Félicitations Aurelien ! Tout est en ordre.${NC}"
+echo -e "\n${GREEN}✨ Félicitations Aurelien ! La maintenance est terminée.${NC}"

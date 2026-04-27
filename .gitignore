@@ -19,7 +19,9 @@ k8s/security/certs_backup/
 # Bases de données ClamAV (très lourd pour Git)
 k8s/security/clamav/*.cvd
 k8s/security/clamav/*.cld
-security/clamav/*.cvd
+k8s/security/clamav/main.*
+k8s/security/clamav/daily.*
+k8s/security/clamav/bytecode.*
 
 # --- LOGS ET TEMPORAIRES ---
 *.log

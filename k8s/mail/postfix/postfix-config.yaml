@@ -14,6 +14,9 @@ data:
     mydomain = k8s.malagasy.com
     myorigin = $mydomain
 
+    # HELO différent pour éviter la détection de boucle avec le relay NAT
+    smtp_helo_name = smtp-out.k8s.malagasy.com
+
     # --- Réseau et Protocoles ---
     inet_interfaces = all
     inet_protocols = all
@@ -22,24 +25,22 @@ data:
     # --- Destinations et Réseaux autorisés ---
     mydestination = localhost
     local_recipient_maps =
-    # Autorisation des plages internes et de l'IP publique du NAT pour le transit
     mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24, 41.204.120.160/27
 
-    # --- RELAIS SORTANT (Via ton NAT) ---
+    # --- RELAIS SORTANT ---
     relayhost = [192.168.6.219]:587
 
-    # --- Optimisations Réception & Tolérance NAT ---
-    # Désactive la recherche DNS inverse pour éviter les déconnexions "lost connection"
+    # --- Optimisations ---
     smtpd_peername_lookup = no
     smtpd_delay_reject = yes
     smtpd_helo_required = no
     smtpd_data_restrictions = reject_unauth_pipelining
-    
+
     # Paramètres DNS
     smtp_host_lookup = native, dns
     lmtp_host_lookup = native, dns
 
-    # --- Mappings MySQL (Base de données) ---
+    # --- Mappings MySQL ---
     virtual_mailbox_domains = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-domains.cf
     virtual_mailbox_maps = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-maps.cf
     virtual_alias_maps = proxy:mysql:/etc/postfix/mysql-virtual-alias-maps.cf
@@ -47,7 +48,7 @@ data:
     # --- Transport vers Dovecot (LMTP) ---
     virtual_transport = lmtp:inet:dovecot-service.mail-stack.svc.cluster.local:24
 
-    # --- Configuration SASL (Auth via Dovecot) ---
+    # --- Configuration SASL ---
     smtpd_sasl_type = dovecot
     smtpd_sasl_path = inet:dovecot-service.mail-stack.svc.cluster.local:10000
     smtpd_sasl_auth_enable = yes
@@ -61,19 +62,18 @@ data:
     smtpd_tls_key_file = /etc/postfix/tls.key
     smtpd_tls_loglevel = 1
 
-    # --- Intégration Rspamd (Antispam) ---
+    # --- Rspamd ---
     smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     non_smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     milter_protocol = 6
     milter_default_action = accept
     milter_connect_timeout = 5s
 
-    # --- Restrictions de sécurité ---
+    # --- Restrictions ---
     smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
-    # service type  private unpriv  chroot  wakeup  maxproc command + args
     smtp      inet  n       -       n       -       -       smtpd
     submission inet n       -       n       -       -       smtpd
       -o syslog_name=postfix/submission

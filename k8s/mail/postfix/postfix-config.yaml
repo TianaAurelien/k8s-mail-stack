@@ -27,8 +27,10 @@ data:
     local_recipient_maps =
     mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24, 41.204.120.160/27
 
-    # --- RELAIS SORTANT ---
-    relayhost = [192.168.6.219]:587
+    # --- RELAIS SORTANT (Correction Port 25) ---
+    relayhost = [192.168.6.219]:25
+    smtp_tls_security_level = may
+    smtp_sasl_auth_enable = no
 
     # --- Optimisations ---
     smtpd_peername_lookup = no

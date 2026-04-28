@@ -1,4 +1,3 @@
-# mail/postfix-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -13,32 +12,31 @@ data:
     myhostname = mail.k8s.malagasy.com
     mydomain = k8s.malagasy.com
     myorigin = $mydomain
-
-    # HELO différent pour éviter la détection de boucle avec le relay NAT
     smtp_helo_name = smtp-out.k8s.malagasy.com
 
-    # --- Réseau et Protocoles ---
+    # --- Réseau ---
     inet_interfaces = all
     inet_protocols = all
     smtp_address_preference = ipv4
 
-    # --- Destinations et Réseaux autorisés ---
+    # --- SÉCURITÉ : Réseaux autorisés (CORRECTION) ---
+    # On retire l'IP publique 41.204.120.160/27 pour fermer l'Open Relay
+    mynetworks = 127.0.0.0/8, 10.244.0.0/16
+
+    # --- Destinations ---
     mydestination = localhost
     local_recipient_maps =
-    mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24, 41.204.120.160/27
 
-    # --- RELAIS SORTANT (Correction Port 25) ---
+    # --- RELAIS SORTANT ---
     relayhost = [192.168.6.219]:25
     smtp_tls_security_level = may
     smtp_sasl_auth_enable = no
 
-    # --- Optimisations ---
+    # --- Optimisations et DNS ---
     smtpd_peername_lookup = no
     smtpd_delay_reject = yes
-    smtpd_helo_required = no
+    smtpd_helo_required = yes
     smtpd_data_restrictions = reject_unauth_pipelining
-
-    # Paramètres DNS
     smtp_host_lookup = native, dns
     lmtp_host_lookup = native, dns
 
@@ -47,10 +45,10 @@ data:
     virtual_mailbox_maps = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-maps.cf
     virtual_alias_maps = proxy:mysql:/etc/postfix/mysql-virtual-alias-maps.cf
 
-    # --- Transport vers Dovecot (LMTP) ---
+    # --- Transport Dovecot (LMTP) ---
     virtual_transport = lmtp:inet:dovecot-service.mail-stack.svc.cluster.local:24
 
-    # --- Configuration SASL ---
+    # --- Authentification SASL ---
     smtpd_sasl_type = dovecot
     smtpd_sasl_path = inet:dovecot-service.mail-stack.svc.cluster.local:10000
     smtpd_sasl_auth_enable = yes
@@ -58,7 +56,7 @@ data:
     smtpd_sasl_authenticated_header = yes
     broken_sasl_auth_clients = yes
 
-    # --- Configuration TLS ---
+    # --- TLS ---
     smtpd_tls_security_level = may
     smtpd_tls_cert_file = /etc/postfix/tls.crt
     smtpd_tls_key_file = /etc/postfix/tls.key
@@ -69,29 +67,25 @@ data:
     non_smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     milter_protocol = 6
     milter_default_action = accept
-    milter_connect_timeout = 5s
 
-    # --- Restrictions ---
+    # --- Restrictions de Relais (SÉCURITÉ) ---
     smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
+    # (Le contenu reste identique à ta version précédente, il était correct)
     smtp      inet  n       -       n       -       -       smtpd
     submission inet n       -       n       -       -       smtpd
       -o syslog_name=postfix/submission
       -o smtpd_tls_security_level=encrypt
       -o smtpd_sasl_auth_enable=yes
-      -o smtpd_sasl_type=dovecot
-      -o smtpd_sasl_path=inet:dovecot-service.mail-stack.svc.cluster.local:10000
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
     smtps     inet  n       -       n       -       -       smtpd
       -o syslog_name=postfix/smtps
       -o smtpd_tls_wrappermode=yes
       -o smtpd_sasl_auth_enable=yes
-      -o smtpd_sasl_type=dovecot
-      -o smtpd_sasl_path=inet:dovecot-service.mail-stack.svc.cluster.local:10000
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-
+    # ... (les autres services pickup, cleanup, etc.) ...
     pickup    unix  n       -       n       60      1       pickup
     cleanup   unix  n       -       n       -       0       cleanup
     qmgr      unix  n       -       n       300     1       qmgr

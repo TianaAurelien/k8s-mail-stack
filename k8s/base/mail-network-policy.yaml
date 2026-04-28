@@ -4,7 +4,7 @@ metadata:
   name: mail-network-policy
   namespace: mail-stack
 spec:
-  podSelector: {} # S'applique à tous les pods du namespace
+  podSelector: {} # S'applique à tous les pods du namespace mail-stack
   policyTypes:
   - Ingress
   - Egress
@@ -13,29 +13,40 @@ spec:
   # FLUX ENTRANTS (INGRESS)
   # =========================================================
   ingress:
-  # 1. Inter-communication totale entre pods du namespace
+  # 1. Inter-communication : Autoriser TOUT entre les pods du namespace mail-stack
   - from:
     - podSelector: {}
 
-  # 2. Trafic public entrant vers les services exposés
+  # 2. ACCÈS VIA INGRESS CONTROLLER (Indispensable pour Roundcube)
+  # On autorise spécifiquement le trafic venant du contrôleur Nginx
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - { protocol: TCP, port: 80 }
+    - { protocol: TCP, port: 443 }
+
+  # 3. Accès Public : SMTP et IMAP/POP
   - from:
     - ipBlock:
         cidr: 0.0.0.0/0
     ports:
+    # Postfix
     - { protocol: TCP, port: 25 }
     - { protocol: TCP, port: 587 }
     - { protocol: TCP, port: 465 }
+    # Dovecot
     - { protocol: TCP, port: 143 }
     - { protocol: TCP, port: 993 }
     - { protocol: TCP, port: 110 }
     - { protocol: TCP, port: 995 }
     - { protocol: TCP, port: 24 }
-    - { protocol: TCP, port: 80 }
-    - { protocol: TCP, port: 443 }
+    # Admin tools (Rspamd UI, etc.)
     - { protocol: TCP, port: 11334 }
     - { protocol: TCP, port: 10000 }
 
-  # 3. Metrics / Prometheus
+  # 4. Surveillance & Système : Autoriser kube-system (Prometheus/Metrics)
   - from:
     - namespaceSelector:
         matchLabels:
@@ -45,39 +56,31 @@ spec:
   # FLUX SORTANTS (EGRESS)
   # =========================================================
   egress:
-  # 1. DNS EXPLICITE
+  # 1. DNS : Autoriser l'accès au DNS interne et externe
   - to:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-system
-      podSelector:
-        matchLabels:
-          k8s-app: kube-dns
+    - ipBlock:
+        cidr: 0.0.0.0/0
     ports:
     - { protocol: UDP, port: 53 }
     - { protocol: TCP, port: 53 }
 
-  # 2. Inter-communication interne
+  # 2. Communication interne : Autoriser la sortie vers le même namespace
   - to:
     - podSelector: {}
 
-  # 3. Longhorn
+  # 3. Services Critiques du Cluster (Longhorn, Cert-Manager, API)
   - to:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: longhorn-system
     ports:
     - { protocol: TCP, port: 2049 }
-
-  # 4. cert-manager
   - to:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: cert-manager
     ports:
     - { protocol: TCP, port: 443 }
-
-  # 5. kube-system (API)
   - to:
     - namespaceSelector:
         matchLabels:
@@ -85,24 +88,22 @@ spec:
     ports:
     - { protocol: TCP, port: 443 }
 
-  # 6. ACCÈS AU RELAIS NAT (CORRECTION)
-  # On autorise explicitement l'IP de k8s-nat-2
+  # 4. ACCÈS AU RELAIS NAT (Restriction de sécurité)
+  # On force le passage par k8s-nat-2 pour le SMTP sortant
   - to:
     - ipBlock:
         cidr: 192.168.6.219/32
     ports:
     - { protocol: TCP, port: 25 }
 
-  # 7. Internet (avec exclusion sécurisée)
+  # 5. Accès Internet : Mise à jour ClamAV, DNSBL
   - to:
     - ipBlock:
         cidr: 0.0.0.0/0
         except:
         - 10.0.0.0/8
-        # On ne bloque plus tout le 192.168.0.0/16 ici pour éviter les conflits
-        # mais on garde la restriction sur les plages privées standards si nécessaire
+        - 10.96.0.0/12
     ports:
     - { protocol: TCP, port: 80 }
     - { protocol: TCP, port: 443 }
-    - { protocol: TCP, port: 25 }
-    - { protocol: TCP, port: 3310 }
+    - { protocol: TCP, port: 3310 } # ClamAV externe

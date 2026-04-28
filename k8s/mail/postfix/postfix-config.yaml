@@ -10,7 +10,7 @@ data:
     maillog_file = /dev/stdout
 
     # --- Identité ---
-    myhostname = smtp-out.k8s.malagasy.com
+    myhostname = mail.k8s.malagasy.com
     mydomain = k8s.malagasy.com
     myorigin = $mydomain
 
@@ -26,7 +26,7 @@ data:
     mynetworks = 127.0.0.0/8, 10.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24, 41.204.120.160/27
 
     # --- RELAIS SORTANT (Via ton NAT) ---
-    relayhost = [41.204.120.179]:25
+    relayhost = [192.168.6.219]:587
 
     # --- Optimisations Réception & Tolérance NAT ---
     # Désactive la recherche DNS inverse pour éviter les déconnexions "lost connection"

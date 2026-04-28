@@ -10,7 +10,7 @@ data:
     maillog_file = /dev/stdout
 
     # --- Identité ---
-    myhostname = mail.k8s.malagasy.com
+    myhostname = smtp-out.k8s.malagasy.com
     mydomain = k8s.malagasy.com
     myorigin = $mydomain
 

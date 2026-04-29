@@ -14,15 +14,11 @@ data:
     myorigin = $mydomain
     smtp_helo_name = smtp-out.k8s.malagasy.com
 
-    # --- Réseau et PROXY PROTOCOL ---
+    # --- Réseau ---
     inet_interfaces = all
     inet_protocols = ipv4
     smtp_address_preference = ipv4
     
-    # INDISPENSABLE : Configuration globale pour HAProxy
-#    smtpd_upstream_proxy_protocol = haproxy
-#    smtpd_upstream_proxy_timeout = 5s
-
     # --- SÉCURITÉ : Réseaux autorisés ---
     mynetworks = 127.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24
 
@@ -36,7 +32,6 @@ data:
     smtp_sasl_auth_enable = no
 
     # --- Optimisations et DNS ---
-    # CORRECTION : Indispensable pour éviter le crash ai_socktype avec HAProxy
     smtpd_peername_lookup = no
     smtpd_delay_reject = yes
     smtpd_helo_required = yes
@@ -79,7 +74,6 @@ data:
   master.cf: |
     # Service SMTP principal
     smtp      inet  n       -       n       -       -       smtpd
-      -o smtpd_upstream_proxy_protocol=haproxy
     
     # Service Submission (587)
     submission inet n       -       n       -       -       smtpd
@@ -87,7 +81,6 @@ data:
       -o smtpd_tls_security_level=encrypt
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-      -o smtpd_upstream_proxy_protocol=haproxy
 
     # Service SMTPS (465)
     smtps     inet  n       -       n       -       -       smtpd
@@ -95,7 +88,6 @@ data:
       -o smtpd_tls_wrappermode=yes
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-      -o smtpd_upstream_proxy_protocol=haproxy
 
     pickup    unix  n       -       n       60      1       pickup
     cleanup   unix  n       -       n       -       0       cleanup

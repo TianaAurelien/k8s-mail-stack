@@ -8,9 +8,13 @@ metadata:
     app.kubernetes.io/instance: ingress-nginx
     app.kubernetes.io/component: controller
 data:
-  # CORRECTION : Activation indispensable pour récupérer l'IP réelle 
-  # via le Proxy Protocol envoyé par ton NAT/LB
+  # Active la lecture du header PROXY envoyé par HAProxy
   use-proxy-protocol: "true"
+  # Définit l'en-tête utilisé pour récupérer l'IP (standard avec proxy protocol)
+  real-ip-header: "proxy_protocol"
+  # INDISPENSABLE : Liste les IPs (ou le subnet) de tes masters HAProxy 
+  # pour que NGINX accepte de leur faire confiance
+  proxy-real-ip-cidr: "192.168.6.0/24"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -35,7 +39,6 @@ spec:
           - /nginx-ingress-controller
           - --controller-class=k8s.io/ingress-nginx
           - --ingress-class=nginx
-          # Ce paramètre pointe vers la ConfigMap créée ci-dessus
           - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
           - --validating-webhook=:8443
           - --validating-webhook-certificate=/usr/local/certificates/cert
@@ -74,7 +77,7 @@ metadata:
     metallb.universe.tf/loadBalancerIPs: 192.168.6.226
 spec:
   type: LoadBalancer
-  # Maintient l'IP source d'origine en évitant le SNAT du kube-proxy
+  # Maintient l'IP source d'origine et évite les sauts réseau inutiles
   externalTrafficPolicy: Local
   selector:
     app.kubernetes.io/name: ingress-nginx

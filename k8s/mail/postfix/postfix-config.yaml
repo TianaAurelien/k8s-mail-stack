@@ -16,10 +16,11 @@ data:
 
     # --- Réseau et PROXY PROTOCOL ---
     inet_interfaces = all
-    inet_protocols = all
+    # CORRECTION : On force IPv4 pour éviter les erreurs de socket/socktype dans le pod
+    inet_protocols = ipv4
     smtp_address_preference = ipv4
     
-    # INDISPENSABLE : On définit HAProxy comme source de confiance pour le Proxy Protocol
+    # INDISPENSABLE : Configuration globale pour HAProxy
     smtpd_upstream_proxy_protocol = haproxy
     smtpd_upstream_proxy_timeout = 5s
 
@@ -36,12 +37,13 @@ data:
     smtp_sasl_auth_enable = no
 
     # --- Optimisations et DNS ---
+    # CORRECTION : Indispensable pour éviter le crash ai_socktype avec HAProxy
     smtpd_peername_lookup = no
     smtpd_delay_reject = yes
     smtpd_helo_required = yes
     smtpd_data_restrictions = reject_unauth_pipelining
-    smtp_host_lookup = native, dns
-    lmtp_host_lookup = native, dns
+    smtp_host_lookup = dns
+    lmtp_host_lookup = dns
 
     # --- Mappings MySQL ---
     virtual_mailbox_domains = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-domains.cf
@@ -76,10 +78,11 @@ data:
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
-    # On ajoute "-o smtpd_upstream_proxy_protocol=haproxy" explicitement sur les ports d'entrée
+    # Service SMTP principal
     smtp      inet  n       -       n       -       -       smtpd
       -o smtpd_upstream_proxy_protocol=haproxy
     
+    # Service Submission (587)
     submission inet n       -       n       -       -       smtpd
       -o syslog_name=postfix/submission
       -o smtpd_tls_security_level=encrypt
@@ -87,6 +90,7 @@ data:
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
       -o smtpd_upstream_proxy_protocol=haproxy
 
+    # Service SMTPS (465)
     smtps     inet  n       -       n       -       -       smtpd
       -o syslog_name=postfix/smtps
       -o smtpd_tls_wrappermode=yes

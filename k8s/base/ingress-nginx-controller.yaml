@@ -1,21 +1,3 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ingress-nginx-controller
-  namespace: ingress-nginx
-  labels:
-    app.kubernetes.io/name: ingress-nginx
-    app.kubernetes.io/instance: ingress-nginx
-    app.kubernetes.io/component: controller
-data:
-  # Active la lecture du header PROXY envoyé par HAProxy
-  use-proxy-protocol: "true"
-  # Définit l'en-tête utilisé pour récupérer l'IP (standard avec proxy protocol)
-  real-ip-header: "proxy_protocol"
-  # INDISPENSABLE : Liste les IPs (ou le subnet) de tes masters HAProxy 
-  # pour que NGINX accepte de leur faire confiance
-  proxy-real-ip-cidr: "192.168.6.0/24"
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -74,17 +56,23 @@ metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
   annotations:
+    # On spécifie le pool explicitement pour MetalLB
+    metallb.universe.tf/ip-allocated-from-pool: internal-pool
+    # L'IP fixe pour votre redirection NAT
     metallb.universe.tf/loadBalancerIPs: 192.168.6.226
 spec:
   type: LoadBalancer
-  # Maintient l'IP source d'origine et évite les sauts réseau inutiles
-  externalTrafficPolicy: Local
+  # On passe en mode 'Cluster' pour permettre le routage entre les nœuds.
+  # Cela évite que le trafic soit rejeté si MetalLB l'envoie sur un nœud sans Pod Ingress.
+  externalTrafficPolicy: Cluster
   selector:
     app.kubernetes.io/name: ingress-nginx
   ports:
     - name: http
       port: 80
       targetPort: 80
+      protocol: TCP
     - name: https
       port: 443
       targetPort: 443
+      protocol: TCP

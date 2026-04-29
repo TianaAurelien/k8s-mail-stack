@@ -18,12 +18,13 @@ data:
     inet_interfaces = all
     inet_protocols = all
     smtp_address_preference = ipv4
-    # Activation du support Proxy Protocol pour récupérer l'IP réelle via l'Ingress
+    
+    # INDISPENSABLE : On définit HAProxy comme source de confiance pour le Proxy Protocol
     smtpd_upstream_proxy_protocol = haproxy
     smtpd_upstream_proxy_timeout = 5s
 
     # --- SÉCURITÉ : Réseaux autorisés ---
-    mynetworks = 127.0.0.0/8, 10.244.0.0/16
+    mynetworks = 127.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24
 
     # --- Destinations ---
     mydestination = localhost
@@ -75,17 +76,24 @@ data:
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
+    # On ajoute "-o smtpd_upstream_proxy_protocol=haproxy" explicitement sur les ports d'entrée
     smtp      inet  n       -       n       -       -       smtpd
+      -o smtpd_upstream_proxy_protocol=haproxy
+    
     submission inet n       -       n       -       -       smtpd
       -o syslog_name=postfix/submission
       -o smtpd_tls_security_level=encrypt
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+      -o smtpd_upstream_proxy_protocol=haproxy
+
     smtps     inet  n       -       n       -       -       smtpd
       -o syslog_name=postfix/smtps
       -o smtpd_tls_wrappermode=yes
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+      -o smtpd_upstream_proxy_protocol=haproxy
+
     pickup    unix  n       -       n       60      1       pickup
     cleanup   unix  n       -       n       -       0       cleanup
     qmgr      unix  n       -       n       300     1       qmgr
@@ -97,7 +105,7 @@ data:
     proxywrite unix -       -       n       -       1       proxymap
     smtp      unix  -       -       n       -       -       smtp
     relay     unix  -       -       n       -       -       smtp
-    showq     unix  n       -       n       -       -       showq
+    showq     unix  -       -       n       -       -       showq
     error     unix  -       -       n       -       -       error
     retry     unix  -       -       n       -       -       error
     discard   unix  -       -       n       -       -       discard

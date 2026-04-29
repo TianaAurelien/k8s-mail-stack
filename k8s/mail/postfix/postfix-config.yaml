@@ -16,13 +16,12 @@ data:
 
     # --- Réseau et PROXY PROTOCOL ---
     inet_interfaces = all
-    # CORRECTION : On force IPv4 pour éviter les erreurs de socket/socktype dans le pod
     inet_protocols = ipv4
     smtp_address_preference = ipv4
     
     # INDISPENSABLE : Configuration globale pour HAProxy
-    smtpd_upstream_proxy_protocol = haproxy
-    smtpd_upstream_proxy_timeout = 5s
+#    smtpd_upstream_proxy_protocol = haproxy
+#    smtpd_upstream_proxy_timeout = 5s
 
     # --- SÉCURITÉ : Réseaux autorisés ---
     mynetworks = 127.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24

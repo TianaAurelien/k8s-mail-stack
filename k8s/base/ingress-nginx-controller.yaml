@@ -56,23 +56,16 @@ metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
   annotations:
-    # On spécifie le pool explicitement pour MetalLB
-    metallb.universe.tf/ip-allocated-from-pool: internal-pool
-    # L'IP fixe pour votre redirection NAT
+    # Force MetalLB à utiliser l'IP NATée pour le HTTPS
     metallb.universe.tf/loadBalancerIPs: 192.168.6.226
 spec:
   type: LoadBalancer
-  # On passe en mode 'Cluster' pour permettre le routage entre les nœuds.
-  # Cela évite que le trafic soit rejeté si MetalLB l'envoie sur un nœud sans Pod Ingress.
-  externalTrafficPolicy: Cluster
   selector:
     app.kubernetes.io/name: ingress-nginx
   ports:
     - name: http
       port: 80
       targetPort: 80
-      protocol: TCP
     - name: https
       port: 443
       targetPort: 443
-      protocol: TCP

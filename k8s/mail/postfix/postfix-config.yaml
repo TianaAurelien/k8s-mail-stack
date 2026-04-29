@@ -14,17 +14,13 @@ data:
     myorigin = $mydomain
     smtp_helo_name = smtp-out.k8s.malagasy.com
 
-    # --- Réseau et PROXY PROTOCOL ---
+    # --- Réseau ---
     inet_interfaces = all
     inet_protocols = ipv4
     smtp_address_preference = ipv4
     
-    # Support HAProxy (Indispensable pour votre setup)
-    smtpd_upstream_proxy_protocol = haproxy
-    smtpd_upstream_proxy_timeout = 5s
-    
-    # CORRECTION CRITIQUE : Empêche le crash ai_socktype avec Proxy Protocol
-    smtpd_peername_lookup = no
+    # DÉSACTIVÉ : Pas de Proxy Protocol pour permettre la connexion directe
+    smtpd_peername_lookup = yes
 
     # --- SÉCURITÉ : Réseaux autorisés ---
     mynetworks = 127.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24
@@ -73,14 +69,13 @@ data:
     milter_protocol = 6
     milter_default_action = accept
 
-    # --- Restrictions de Relais ---
+    # --- Restrictions de Relais (CORRIGÉES) ---
     smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
     # Service SMTP principal (Port 25)
     smtp      inet  n       -       n       -       -       smtpd
-      -o smtpd_upstream_proxy_protocol=haproxy
     
     # Service Submission (Port 587)
     submission inet n       -       n       -       -       smtpd
@@ -88,7 +83,6 @@ data:
       -o smtpd_tls_security_level=encrypt
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-      -o smtpd_upstream_proxy_protocol=haproxy
 
     # Service SMTPS (Port 465)
     smtps     inet  n       -       n       -       -       smtpd
@@ -96,7 +90,6 @@ data:
       -o smtpd_tls_wrappermode=yes
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-      -o smtpd_upstream_proxy_protocol=haproxy
 
     pickup    unix  n       -       n       60      1       pickup
     cleanup   unix  n       -       n       -       0       cleanup

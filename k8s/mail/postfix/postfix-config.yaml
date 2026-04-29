@@ -16,14 +16,12 @@ data:
 
     # --- Réseau ---
     inet_interfaces = all
-    inet_protocols = ipv4
+    inet_protocols = all
     smtp_address_preference = ipv4
-    
-    # DÉSACTIVÉ : Pas de Proxy Protocol pour permettre la connexion directe
-    smtpd_peername_lookup = yes
 
     # --- SÉCURITÉ : Réseaux autorisés ---
-    mynetworks = 127.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24
+    # On reste sur le local et le réseau des Pods pour éviter l'Open Relay
+    mynetworks = 127.0.0.0/8, 10.244.0.0/16
 
     # --- Destinations ---
     mydestination = localhost
@@ -35,11 +33,12 @@ data:
     smtp_sasl_auth_enable = no
 
     # --- Optimisations et DNS ---
+    smtpd_peername_lookup = no
     smtpd_delay_reject = yes
     smtpd_helo_required = yes
     smtpd_data_restrictions = reject_unauth_pipelining
-    smtp_host_lookup = dns
-    lmtp_host_lookup = dns
+    smtp_host_lookup = native, dns
+    lmtp_host_lookup = native, dns
 
     # --- Mappings MySQL ---
     virtual_mailbox_domains = proxy:mysql:/etc/postfix/mysql-virtual-mailbox-domains.cf
@@ -69,7 +68,7 @@ data:
     milter_protocol = 6
     milter_default_action = accept
 
-    # --- Restrictions de Relais (CORRIGÉES) ---
+    # --- Restrictions de Relais (SÉCURITÉ - Lignes corrigées) ---
     smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
@@ -102,7 +101,7 @@ data:
     proxywrite unix -       -       n       -       1       proxymap
     smtp      unix  -       -       n       -       -       smtp
     relay     unix  -       -       n       -       -       smtp
-    showq     unix  -       -       n       -       -       showq
+    showq     unix  n       -       n       -       -       showq
     error     unix  -       -       n       -       -       error
     retry     unix  -       -       n       -       -       error
     discard   unix  -       -       n       -       -       discard

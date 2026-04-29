@@ -14,13 +14,15 @@ data:
     myorigin = $mydomain
     smtp_helo_name = smtp-out.k8s.malagasy.com
 
-    # --- Réseau ---
+    # --- Réseau et PROXY PROTOCOL ---
     inet_interfaces = all
     inet_protocols = all
     smtp_address_preference = ipv4
+    # Activation du support Proxy Protocol pour récupérer l'IP réelle via l'Ingress
+    smtpd_upstream_proxy_protocol = haproxy
+    smtpd_upstream_proxy_timeout = 5s
 
-    # --- SÉCURITÉ : Réseaux autorisés (CORRECTION) ---
-    # On retire l'IP publique 41.204.120.160/27 pour fermer l'Open Relay
+    # --- SÉCURITÉ : Réseaux autorisés ---
     mynetworks = 127.0.0.0/8, 10.244.0.0/16
 
     # --- Destinations ---
@@ -68,12 +70,11 @@ data:
     milter_protocol = 6
     milter_default_action = accept
 
-    # --- Restrictions de Relais (SÉCURITÉ) ---
+    # --- Restrictions de Relais ---
     smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
-    # (Le contenu reste identique à ta version précédente, il était correct)
     smtp      inet  n       -       n       -       -       smtpd
     submission inet n       -       n       -       -       smtpd
       -o syslog_name=postfix/submission
@@ -85,7 +86,6 @@ data:
       -o smtpd_tls_wrappermode=yes
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-    # ... (les autres services pickup, cleanup, etc.) ...
     pickup    unix  n       -       n       60      1       pickup
     cleanup   unix  n       -       n       -       0       cleanup
     qmgr      unix  n       -       n       300     1       qmgr

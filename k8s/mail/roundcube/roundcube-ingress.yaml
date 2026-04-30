@@ -7,7 +7,7 @@ metadata:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     # ✅ Suppression de http01-edit-in-place pour éviter les conflits avec Apache
     nginx.ingress.kubernetes.io/proxy-body-size: "20m"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   tls:

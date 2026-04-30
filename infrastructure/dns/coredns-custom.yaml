@@ -11,31 +11,34 @@ data:
            lameduck 5s
         }
         ready
-          
+           
         # --- CONFIGURATION DES HÔTES LOCAUX ---
         hosts {
-          # IP .226 : Ingress Public (Stack Mail)
-          192.168.6.226 mail.k8s.malagasy.com smtp.k8s.malagasy.com imap.k8s.malagasy.com webmail.k8s.malagasy.com
-            
-          # Outils DevOps (IPs Dédiées .80 et .81)
+          # STACK MAIL : Utilise la VIP Keepalived (.123) pour passer par HAProxy.
+          # Cela résout le blocage "Proxy Protocol" de l'Ingress Nginx tout en étant HA.
+          192.168.6.123 mail.k8s.malagasy.com webmail.k8s.malagasy.com
+          
+          # Services Mail Directs (IPs MetalLB dédiées)
+          192.168.6.221 smtp.k8s.malagasy.com
+          192.168.6.222 imap.k8s.malagasy.com
+             
+          # OUTILS DEVOPS : Accès direct via leurs IPs MetalLB (Pas de passage par HAProxy nécessaire)
           192.168.6.80 argocd.k8s.malagasy.com
           192.168.6.81 harbor.k8s.malagasy.com
-
-          # Services Monitoring (IP Dédiées)
           192.168.6.224 grafana.k8s.malagasy.com
           192.168.6.225 prometheus.k8s.malagasy.com
-            
-          # Infrastructure & API
+             
+          # INFRASTRUCTURE & API : Utilise également la VIP pour la résilience
           192.168.6.123 k8s-api.malagasy.com longhorn.malagasy.com
-            
-          # Nœuds du Cluster
+             
+          # NŒUDS DU CLUSTER : Garder les IPs réelles pour l'administration directe
           192.168.6.114 k8s-master-1.malagasy.com
           192.168.6.118 k8s-master-2.malagasy.com
           192.168.6.124 k8s-master-3.malagasy.com
           192.168.6.117 k8s-worker-1.malagasy.com
           192.168.6.116 k8s-worker-2.malagasy.com
           192.168.6.115 k8s-worker-3.malagasy.com
-            
+             
           fallthrough
         }
         # --------------------------------------

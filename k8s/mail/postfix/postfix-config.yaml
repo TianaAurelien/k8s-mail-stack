@@ -8,10 +8,6 @@ data:
     compatibility_level = 3.6
     maillog_file = /dev/stdout
 
-    # --- Support HAProxy (Indispensable) ---
-    smtpd_upstream_proxy_protocol = haproxy
-    smtpd_upstream_proxy_timeout = 5s
-
     # --- Identité ---
     myhostname = mail.k8s.malagasy.com
     mydomain = k8s.malagasy.com
@@ -22,14 +18,15 @@ data:
     inet_interfaces = all
     inet_protocols = all
     smtp_address_preference = ipv4
-    mynetworks = 127.0.0.0/8, 10.244.0.0/16
+    mynetworks = 127.0.0.0/8, 10.244.0.0/16, 192.168.6.0/24
 
     # --- Destinations ---
     mydestination = localhost
     local_recipient_maps =
 
-    # --- RELAIS SORTANT ---
-    relayhost = [192.168.6.219]:587
+    # --- RELAIS SORTANT (Vers k8s-nat-2) ---
+    # On utilise l'IP LAN du NAT pour sortir
+    relayhost = [192.168.6.219]:25
     smtp_tls_security_level = may
     smtp_sasl_auth_enable = no
 
@@ -49,7 +46,7 @@ data:
     # --- Transport Dovecot (LMTP) ---
     virtual_transport = lmtp:inet:dovecot-service.mail-stack.svc.cluster.local:24
 
-    # --- Authentification SASL ---
+    # --- Authentification SASL (Via Dovecot) ---
     smtpd_sasl_type = dovecot
     smtpd_sasl_path = inet:dovecot-service.mail-stack.svc.cluster.local:10000
     smtpd_sasl_auth_enable = yes
@@ -57,13 +54,13 @@ data:
     smtpd_sasl_authenticated_header = yes
     broken_sasl_auth_clients = yes
 
-    # --- TLS ---
+    # --- TLS (Certificats Let's Encrypt) ---
     smtpd_tls_security_level = may
     smtpd_tls_cert_file = /etc/postfix/tls.crt
     smtpd_tls_key_file = /etc/postfix/tls.key
     smtpd_tls_loglevel = 1
 
-    # --- Rspamd ---
+    # --- Filtrage Antispam (Rspamd) ---
     smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     non_smtpd_milters = inet:rspamd-service.mail-stack.svc.cluster.local:11332
     milter_protocol = 6
@@ -74,41 +71,49 @@ data:
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
-    smtp      inet  n       -       n       -       -       smtpd
-    
-    submission inet n       -       n       -       -       smtpd
+    # Port 25 - Réception Externe (Proxy Protocol HAProxy requis)
+    smtp      inet  n       -       y       -       -       smtpd
+      -o smtpd_upstream_proxy_protocol=haproxy
+      -o smtpd_upstream_proxy_timeout=5s
+
+    # Port 587 - Soumission Interne (Roundcube) & Clients directs (SANS Proxy Protocol)
+    submission inet n       -       y       -       -       smtpd
       -o syslog_name=postfix/submission
       -o smtpd_tls_security_level=encrypt
       -o smtpd_sasl_auth_enable=yes
+      -o smtpd_upstream_proxy_protocol=
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
 
-    smtps     inet  n       -       n       -       -       smtpd
+    # Port 465 - SMTPS Interne (SANS Proxy Protocol)
+    smtps     inet  n       -       y       -       -       smtpd
       -o syslog_name=postfix/smtps
       -o smtpd_tls_wrappermode=yes
       -o smtpd_sasl_auth_enable=yes
+      -o smtpd_upstream_proxy_protocol=
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
 
-    pickup    unix  n       -       n       60      1       pickup
-    cleanup   unix  n       -       n       -       0       cleanup
-    qmgr      unix  n       -       n       300     1       qmgr
-    tlsmgr    unix  -       -       n       1000    1       tlsmgr
-    rewrite   unix  -       -       n       -       -       trivial-rewrite
-    bounce    unix  -       -       n       -       0       bounce
-    defer     unix  -       -       n       -       0       bounce
-    proxymap  unix  -       -       n       -       -       proxymap
-    proxywrite unix -       -       n       -       1       proxymap
-    smtp      unix  -       -       n       -       -       smtp
-    relay     unix  -       -       n       -       -       smtp
-    showq     unix  n       -       n       -       -       showq
-    error     unix  -       -       n       -       -       error
-    retry     unix  -       -       n       -       -       error
-    discard   unix  -       -       n       -       -       discard
-    local     unix  -       -       n       -       -       local
-    virtual   unix  -       -       n       -       -       virtual
-    lmtp      unix  -       -       n       -       -       lmtp
-    anvil     unix  -       -       n       -       1       anvil
-    scache    unix  -       -       n       -       1       scache
-    postlog   unix-dgram n  -       n       -       1       postlogd
+    # Services internes obligatoires
+    pickup    unix  n       -       y       60      1       pickup
+    cleanup   unix  n       -       y       -       0       cleanup
+    qmgr      unix  n       -       y       300     1       qmgr
+    tlsmgr    unix  -       -       y       1000    1       tlsmgr
+    rewrite   unix  -       -       y       -       -       trivial-rewrite
+    bounce    unix  -       -       y       -       0       bounce
+    defer     unix  -       -       y       -       0       bounce
+    proxymap  unix  -       -       y       -       -       proxymap
+    proxywrite unix -       -       y       -       1       proxymap
+    smtp      unix  -       -       y       -       -       smtp
+    relay     unix  -       -       y       -       -       smtp
+    showq     unix  n       -       y       -       -       showq
+    error     unix  -       -       y       -       -       error
+    retry     unix  -       -       y       -       -       error
+    discard   unix  -       -       y       -       -       discard
+    local     unix  -       -       y       -       -       local
+    virtual   unix  -       -       y       -       -       virtual
+    lmtp      unix  -       -       y       -       -       lmtp
+    anvil     unix  -       -       y       -       1       anvil
+    scache    unix  -       -       y       -       1       scache
+    postlog   unix-dgram n  -       y       -       1       postlogd
 
   mysql-virtual-mailbox-domains.cf: |
     user = mailuser

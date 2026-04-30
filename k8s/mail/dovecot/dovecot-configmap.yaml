@@ -6,26 +6,26 @@ metadata:
 data:
   dovecot.conf: |
     # =========================
-    # LOGS (Indispensable pour kubectl logs)
+    # LOGS
     # =========================
     log_path = /dev/stdout
     info_log_path = /dev/stdout
     debug_log_path = /dev/stdout
-    auth_verbose = yes
-    auth_debug = yes
-    auth_debug_passwords = yes
 
     # =========================
-    # Protocoles et réseau
+    # SUPPORT HAPROXY
+    # =========================
+    haproxy_trusted_networks = 127.0.0.1, 10.244.0.0/16, 192.168.6.0/24
+    haproxy_timeout = 3s
+
+    # =========================
+    # Protocoles
     # =========================
     protocols = imap pop3 lmtp
     listen = *
     disable_plaintext_auth = no
     auth_mechanisms = plain login
 
-    # =========================
-    # MAIL LOCATION & QUOTA
-    # =========================
     mail_location = maildir:/var/mail/%d/%n
     mail_plugins = $mail_plugins quota
     
@@ -44,9 +44,6 @@ data:
       quota_exceeded_message = Boite mail pleine.
     }
 
-    # =========================
-    # AUTH SQL
-    # =========================
     passdb {
       driver = sql
       args = /etc/dovecot/dovecot-sql.conf.ext
@@ -57,31 +54,32 @@ data:
       args = /etc/dovecot/dovecot-sql.conf.ext
     }
 
-    # =========================
-    # TLS
-    # =========================
     ssl = yes
     ssl_cert = </etc/dovecot/ssl/tls.crt
     ssl_key = </etc/dovecot/ssl/tls.key
 
     # =========================
-    # SERVICES (Fix syntax: no garbage after '{')
+    # SERVICES AVEC PROXY PROTOCOL
     # =========================
     service imap-login {
       inet_listener imap {
         port = 143
+        haproxy = yes
       }
       inet_listener imaps {
         port = 993
+        haproxy = yes
       }
     }
 
     service pop3-login {
       inet_listener pop3 {
         port = 110
+        haproxy = yes
       }
       inet_listener pop3s {
         port = 995
+        haproxy = yes
       }
     }
 

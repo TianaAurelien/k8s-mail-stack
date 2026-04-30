@@ -8,6 +8,10 @@ data:
     compatibility_level = 3.6
     maillog_file = /dev/stdout
 
+    # --- Support HAProxy (Indispensable) ---
+    smtpd_upstream_proxy_protocol = haproxy
+    smtpd_upstream_proxy_timeout = 5s
+
     # --- Identité ---
     myhostname = mail.k8s.malagasy.com
     mydomain = k8s.malagasy.com
@@ -18,9 +22,6 @@ data:
     inet_interfaces = all
     inet_protocols = all
     smtp_address_preference = ipv4
-
-    # --- SÉCURITÉ : Réseaux autorisés ---
-    # On reste sur le local et le réseau des Pods pour éviter l'Open Relay
     mynetworks = 127.0.0.0/8, 10.244.0.0/16
 
     # --- Destinations ---
@@ -28,7 +29,7 @@ data:
     local_recipient_maps =
 
     # --- RELAIS SORTANT ---
-    relayhost = [192.168.6.219]:25
+    relayhost = [192.168.6.219]:587
     smtp_tls_security_level = may
     smtp_sasl_auth_enable = no
 
@@ -68,22 +69,19 @@ data:
     milter_protocol = 6
     milter_default_action = accept
 
-    # --- Restrictions de Relais (SÉCURITÉ - Lignes corrigées) ---
+    # --- Restrictions de Relais ---
     smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
     smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 
   master.cf: |
-    # Service SMTP principal (Port 25)
     smtp      inet  n       -       n       -       -       smtpd
     
-    # Service Submission (Port 587)
     submission inet n       -       n       -       -       smtpd
       -o syslog_name=postfix/submission
       -o smtpd_tls_security_level=encrypt
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
 
-    # Service SMTPS (Port 465)
     smtps     inet  n       -       n       -       -       smtpd
       -o syslog_name=postfix/smtps
       -o smtpd_tls_wrappermode=yes

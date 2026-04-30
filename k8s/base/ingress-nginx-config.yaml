@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  # Active la lecture du protocole PROXY envoyé par HAProxy
+  use-proxy-protocol: "true"
+  # Permet de voir la vraie IP du client dans les logs Nginx
+  real-ip-header: "proxy_protocol"
+  set-real-ip-from: "192.168.6.0/24" # Remplace par le CIDR de ton réseau master/worker
+  # Optimisations recommandées
+  use-forwarded-headers: "true"
+  client-max-body-size: "50m"

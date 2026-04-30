@@ -23,8 +23,9 @@ portal:
   replicas: 3
 core:
   replicas: 3
+# Réduit à 1 pour éviter les conflits Multi-Attach sur le volume RWO/RWX de log
 jobservice:
-  replicas: 3
+  replicas: 1
 registry:
   replicas: 3
 
@@ -38,13 +39,12 @@ persistence:
       size: 50Gi
     jobservice:
       storageClass: "longhorn-static"
-      accessMode: ReadWriteMany
+      accessMode: ReadWriteOnce
       size: 5Gi
     chartmuseum:
       storageClass: "longhorn-static"
       accessMode: ReadWriteOnce
       size: 5Gi
-    # Ajout crucial pour le mode HA interne
     database:
       storageClass: "longhorn-static"
       accessMode: ReadWriteOnce
@@ -53,13 +53,18 @@ persistence:
       storageClass: "longhorn-static"
       accessMode: ReadWriteOnce
       size: 1Gi
+    # Ajout pour débloquer Trivy
+    trivy:
+      storageClass: "longhorn-static"
+      accessMode: ReadWriteOnce
+      size: 5Gi
 
 database:
   type: internal
 redis:
   type: internal
 
-# Recommandé pour éviter les problèmes de session en multi-réplicas
+# Configuration proxy et sessions
 proxy:
   httpProxy: ""
   httpsProxy: ""

@@ -64,6 +64,11 @@ data:
     service imap-login {
       inet_listener imap {
         port = 143
+        haproxy = no
+      }
+      # Listener pour MetalLB / Accès Externe (AVEC PROXY PROTOCOL)
+      inet_listener imap_external {
+        port = 10143
         haproxy = yes
       }
       inet_listener imaps {
@@ -75,6 +80,10 @@ data:
     service pop3-login {
       inet_listener pop3 {
         port = 110
+        haproxy = no
+      }
+      inet_listener pop3_external {
+        port = 10110
         haproxy = yes
       }
       inet_listener pop3s {
